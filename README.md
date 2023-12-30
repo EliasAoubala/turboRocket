@@ -13,7 +13,7 @@ The main goal of this project is to create a set of tools that can be used by de
 Use the package manager [pip](https://pip.pypa.io/en/stable/) to install the TurboRocket library.
 
 ```bash
-pip install turboRocket
+pip install turboRocke
 ```
 
 ## Usage
