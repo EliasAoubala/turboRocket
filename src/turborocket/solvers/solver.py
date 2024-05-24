@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.integrate import trapz
 
 
 def adjoint(func, x_guess, dx, n, relax, target, params=[], RECORD_HIST=False):
@@ -60,3 +61,16 @@ def adjoint(func, x_guess, dx, n, relax, target, params=[], RECORD_HIST=False):
         print(dx_hist)
 
     return x_hist[k]
+
+
+def integrator(func, x_start, x_end, n, params=[]):
+    # This function integrates a given function within a given range
+
+    x_array = np.linspace(x_start, x_end, n)
+
+    int_values = func(x_array, *params)
+
+    # We then do trapezoidal integration
+    integral = trapz(int_values, x_array)
+
+    return integral

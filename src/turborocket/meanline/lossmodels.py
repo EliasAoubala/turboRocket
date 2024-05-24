@@ -8,15 +8,68 @@ Loss-Models currently implemented:
 
     - craigcox: Loss Model by Craig and Cox
     - kackerOkapuu: Loss Model by Kacker and Okapuu (1982)
-    - Aungier: Loss Modely by Aungier    
+    - Aungier: Loss Modely by Aungier 
+    - Andreas: Loss Model for Radial Turbines https://api.semanticscholar.org/CorpusID:218640940
+}  
 
 """
 
 import numpy as np
 
+
+class Andreas:
+    def __init__(self):
+        return
+
+    def nozzlePhi(self):
+        # This equation computed the Supersonic Nozzle Velocity Coefficient
+        # Velocity coefficient here is c_No/c_No_is (Actual Velocity / Isentropic Velocity)
+
+        self.phi2 = (
+            1
+            - (0.0029 * self.Ma1**3 - 0.0502 * self.Ma1**2 + 0.2241 * self.Ma1 - 0.0877)
+        ) ** (0.5)
+
+        return
+
+    def bladePhi(self):
+        # This equation computes the supersonic turbine blade velocity coefficient
+        # This is defined as w_exit/ w_inlet
+
+        self.phi3 = (
+            0.957
+            - 0.000362 * self.deltaB
+            - 0.0258 * self.Ma1_rel
+            + 0.00000639 * self.deltaB**2
+            + 0.0674 * self.Ma1_rel**2
+            - 0.0000000753 * self.deltaB**3
+            - 0.043 * self.Ma1_rel**3
+            - 0.000238 * self.deltaB * self.Ma1_rel
+            + 0.00000145 * self.deltaB**2 * self.Ma1_rel
+            + 0.0000425 * self.deltaB * self.Ma1_rel**2
+        )
+
+        return
+
+    def ventilationPower(self):
+
+        # This calculates the ventilation losses due to partial admission
+
+        self.p_v = (1.85 / 2) * (
+            (1 - self.epsilon)
+            * self.rho_exit
+            * (self.n / 60) ** 3
+            * self.D_mean**4
+            * 4.5
+            * self.h_blade
+        )
+
+        return
+
+
 class Aungier:
     """
-    
+
     The Aungier Loss Model
 
     Variables:
@@ -92,59 +145,68 @@ class Aungier:
             K_p:    correction for Compressibility effects
             K_re:   correction for Reynolds Number effects
             Y_p1:   profile loss coefficient for nozzle blades (beta_1 = 90)
-            Y_p2:   profile loss coefficients for impulse blades (alpha_2 = beta_1) 
-        
+            Y_p2:   profile loss coefficients for impulse blades (alpha_2 = beta_1)
+
         Returns:
             _type_: _description_
         """
 
-        prt = (y_p1 + ((beta_1/alpha_2)**2 ) * (y_p2 - y_p1))*((5*t/c)**(beta_1/alpha_2)) - delta_y_te
+        prt = (y_p1 + ((beta_1 / alpha_2) ** 2) * (y_p2 - y_p1)) * (
+            (5 * t / c) ** (beta_1 / alpha_2)
+        ) - delta_y_te
 
-        y_p = k_mod * k_inc * k_m * k_p * k_re * prt;
+        y_p = k_mod * k_inc * k_m * k_p * k_re * prt
 
         return y_p
-    
-    def F_ar(self):
 
+    def F_ar(self):
         if h_c < 2:
-            f_ar = 0.5 * (2*c/h)**(0.7)
+            f_ar = 0.5 * (2 * c / h) ** (0.7)
         else:
-            f_ar = (c/h)
-        
+            f_ar = c / h
+
         return f_ar
 
     def Y_s(self):
-        y_bar_s = 0.0334 * F_ar * (C_l / (s_c))**2 * (np.cos(alpha_2)/np.cos(beta_1))*(np.cos(alpha_2)**2/np.cos(alpha_m)***3)
+        y_bar_s = (
+            0.0334
+            * F_ar
+            * (C_l / (s_c)) ** 2
+            * (np.cos(alpha_2) / np.cos(beta_1))
+            * (np.cos(alpha_2) ** 2 / np.cos(alpha_m) ** 3)
+        )
 
-        y_s = k_s*k_re*(y_bar_s**2 / (1 + 7.5*y_bar_s))**(1/2)
+        y_s = k_s * k_re * (y_bar_s**2 / (1 + 7.5 * y_bar_s)) ** (1 / 2)
 
         return y_s
-    
+
     def Y_sh(self):
+        y_bar_sh = 0.8 * x_1**2 + x_2**2
 
-        y_bar_sh = 0.8*x_1**2 + x_2**2
-
-        y_sh = (y_bar_sh**2 / (1 + y_bar_sh**2))**(1/2)
+        y_sh = (y_bar_sh**2 / (1 + y_bar_sh**2)) ** (1 / 2)
 
         return y_sh
-    
+
     def Y_ex(self):
-        
-        y_ex = ((M2 - 1)/M2)**2;
+        y_ex = ((M2 - 1) / M2) ** 2
 
         return y_ex
-    
-    def Y_te(self):
 
-        y_te = ((t_2/s) * np.sin(beta_g) - t_2)**2
+    def Y_te(self):
+        y_te = ((t_2 / s) * np.sin(beta_g) - t_2) ** 2
 
         return y_te
 
     def Y_tcl(self):
-        
-        if TIP_TYPE = "shrouded":
+        if TIP_TYPE == "shrouded":
             B = 0.37
         else:
             B = 0.47
 
-        Y_tcl = B*(c/h)*(t_cl / c)**(0.78) * (C_l/(s/c))**2 * (np.cos(alpha_2)**2 /np.cos(alpha_m)**3)
+        Y_tcl = (
+            B
+            * (c / h)
+            * (t_cl / c) ** (0.78)
+            * (C_l / (s / c)) ** 2
+            * (np.cos(alpha_2) ** 2 / np.cos(alpha_m) ** 3)
+        )
