@@ -8,7 +8,7 @@ The major constraints required to be considered are:
 """
 
 
-from src.turborocket.solvers.solver import adjoint, integrator
+from turborocket.solvers.solver import adjoint, integrator
 
 
 def M_star_func(M_star, M_star_l, k_star, gamma):
@@ -28,7 +28,8 @@ def M_star_func_int(k_star, M_star_l, M_star_u, gamma, n):
 def starting_test(k_star, M_star_l, M_star_u, gamma, n):
     # We can design the loop for solving the loop
 
-    # Firstly we need to evaluate the range of the integral function values, between the upper and lower M* values
+    # Firstly we need to evaluate the range of the integral function values,
+    # between the upper and lower M* values
 
     LHS = M_star_func_int(k_star, M_star_l, M_star_u, gamma, n)
 

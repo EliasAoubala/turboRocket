@@ -74,3 +74,4 @@ def integrator(func, x_start, x_end, n, params=[]):
     integral = trapz(int_values, x_array)
 
     return integral
+
