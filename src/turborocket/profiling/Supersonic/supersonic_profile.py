@@ -1,9 +1,15 @@
 # This file encapsulates the main function for computing the supersonic profile
 
-from turborocket.profiling.Supersonic.circular import prandtl_meyer, M_star, arc_angles_upper, arc_angles_lower
-from turborocket.profiling.Supersonic.constraints import inv_mass_flow, r_star
+from turborocket.profiling.Supersonic.circular import prandtl_meyer, M_star, arc_angles_upper, arc_angles_lower, inv_M_star
+
 from turborocket.profiling.Supersonic.transition import moc, moc_2
+
+from turborocket.profiling.Supersonic.constraints import inv_mass_flow, r_star
+from turborocket.profiling.Supersonic.constraints import k_star_max, Q, C, shock_pressure_rat, M_i_star_max
+from turborocket.profiling.Supersonic.constraints import M_star_u_max, M_star_l_min
+
 from turborocket.fluids.ideal_gas import IdealFluid
+
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -311,3 +317,140 @@ class SupersonicProfile():
         ax.set_aspect('equal')
         ax.legend()
         plt.show()
+        
+    def plot_all_shift(self, NUMBER_OF_POINTS):
+        # This function plots the circular arcs for visual inspection
+        
+        fig, ax = plt.subplots()
+
+        # We then plot our results
+        
+        ax.plot(self._x_l_array, self._y_l_array)
+        ax.plot(self._x_u_array, self._y_u_array_sf)
+        ax.plot(self._xlkt_il, self._ylkt_il, label="Inlet Lower")
+        ax.plot(self._xlkt_iu, self._ylkt_iu_sf, label="Inlet Upper")
+        ax.plot(self._xlkt_ol, self._ylkt_ol, label="Outlet Lower")
+        ax.plot(self._xlkt_ou, self._ylkt_ou_sf, label="Outlet Upper")
+        ax.plot([self._x_i_start, self._x_i_end], [self._y_i_start_sf, self._y_i_end_sf])
+        ax.plot([self._x_o_start, self._x_o_end], [self._y_o_start_sf, self._y_o_end_sf])
+        ax.set_aspect('equal')
+        ax.legend()
+        plt.show()
+        
+    def plot_all_shift(self, NUMBER_OF_POINTS):
+        # This function plots the circular arcs for visual inspection
+        
+        fig, ax = plt.subplots()
+
+        # We then plot our results
+        
+        ax.plot(self._x_l_array, self._y_l_array)
+        ax.plot(self._x_u_array, self._y_u_array_sf)
+        ax.plot(self._xlkt_il, self._ylkt_il, label="Inlet Lower")
+        ax.plot(self._xlkt_iu, self._ylkt_iu_sf, label="Inlet Upper")
+        ax.plot(self._xlkt_ol, self._ylkt_ol, label="Outlet Lower")
+        ax.plot(self._xlkt_ou, self._ylkt_ou_sf, label="Outlet Upper")
+        ax.plot([self._x_i_start, self._x_i_end], [self._y_i_start_sf, self._y_i_end_sf])
+        ax.plot([self._x_o_start, self._x_o_end], [self._y_o_start_sf, self._y_o_end_sf])
+        ax.set_aspect('equal')
+        ax.legend()
+        plt.show()
+        
+    def plot_all_shift_to_scale(self, NUMBER_OF_POINTS):
+        # This function plots the circular arcs for visual inspection
+        
+        fig, ax = plt.subplots()
+
+        # We then plot our results
+        
+        ax.plot(self._x_l_array * self._r_star_a, self._y_l_array * self._r_star_a)
+        ax.plot(self._x_u_array * self._r_star_a, self._y_u_array_sf * self._r_star_a)
+        ax.plot(self._xlkt_il * self._r_star_a, self._ylkt_il * self._r_star_a, label="Inlet Lower")
+        ax.plot(self._xlkt_iu * self._r_star_a, self._ylkt_iu_sf * self._r_star_a, label="Inlet Upper")
+        ax.plot(self._xlkt_ol * self._r_star_a, self._ylkt_ol * self._r_star_a, label="Outlet Lower")
+        ax.plot(self._xlkt_ou * self._r_star_a, self._ylkt_ou_sf * self._r_star_a, label="Outlet Upper")
+        ax.plot([self._x_i_start * self._r_star_a, self._x_i_end * self._r_star_a], [self._y_i_start_sf * self._r_star_a, self._y_i_end_sf * self._r_star_a])
+        ax.plot([self._x_o_start * self._r_star_a, self._x_o_end * self._r_star_a], [self._y_o_start_sf * self._r_star_a, self._y_o_end_sf * self._r_star_a])
+        ax.set_aspect('equal')
+        ax.legend()
+        plt.show()
+        
+    def M_i_max(self):
+        """
+        This function solves for the critical inlet mach number for the profile to ensure the geometry can be started succesfully.
+        
+        In supersonic turbines, it is critical that the geometry can be started up under low flow conditions.
+        
+        This particularly important at startup conditions as the relative inlet velocities are at their highest levels (due to blade speeds being low).
+        
+        We can solve for the maximum acceptable inlet mach number/ prantl meyer angle and see if self-starting is possible for the turbine.
+        
+        """
+        
+        # First we need to solve for our k_star_max based on our upper and lowe mach numbers we have selected
+        INTEGRAL_NUMBER = 100  # TODO: Fix this magic number
+        GAMMA = self._fluid.get_gamma()
+        
+        self._k_star = k_star_max(M_star_l = self._M_l_star,
+                            M_star_u = self._M_u_star,
+                            gamma = GAMMA,
+                            n = INTEGRAL_NUMBER
+                            )
+        
+        # Now we know our k_star max, we can figure out what our Q and C are for the turbine accordingly
+        
+        self._Q_blade = Q(M_star_l = self._M_l_star,
+                    M_star_u = self._M_u_star,
+                    gamma = GAMMA,
+                    n = INTEGRAL_NUMBER)
+        
+        self._C_blade = C(M_star_l = self._M_l_star,
+                    M_star_u = self._M_u_star,
+                    gamma = GAMMA,
+                    n = INTEGRAL_NUMBER,
+                    k_star = self._k_star)
+        
+        # From this, we can figure out what our shock pressure ratio is for the gas.
+        
+        self._p_rat = shock_pressure_rat(Q = self._Q_blade,
+                                   C = self._C_blade)
+        
+        # Now that we know our shock pressure ratio, we can now calculate back our M_star_i_max value
+        
+        self._M_i_star_max = M_i_star_max(p_rat = self._p_rat,
+                                          gamma = GAMMA)
+        
+        # We can back calculate for what this mach number 
+        
+        self._M_i_max = inv_M_star(gamma = GAMMA,
+                                   M_star = self._M_i_star_max)
+        
+        return self._M_i_max
+        
+    def M_u_max(self):
+        """
+        This function solves for the maximum upper surface mach number inorder to prevent flow seperation
+        """
+        GAMMA = self._fluid.get_gamma()
+        
+        self._M_u_star_max = M_star_u_max(m_star_o = self._M_o_star,
+                                     gamma = GAMMA)
+        
+        self._M_u_max = inv_M_star(gamma = GAMMA,
+                                   M_star = self._M_u_star_max)
+        
+        return
+        
+    def M_l_min(self):
+        """
+        This function solves for the minimum lower surface mach number to avoid flow seperation of the gas
+        """
+        GAMMA = self._fluid.get_gamma()
+        
+        self._M_l_star_min = M_star_l_min(m_star_i = self._M_i_star,
+                                     gamma = GAMMA)
+        
+        self._M_l_min = inv_M_star(gamma = GAMMA,
+                                   M_star = self._M_l_star_min)
+        
+        return
