@@ -14,7 +14,7 @@ from turborocket.solvers.solver import adjoint, integrator
 # Functions for supersonic startabilitiy
 
 def M_star_func(M_star, M_star_l, k_star, gamma):
-    integral = (1 - ((k_star / M_star_l) * M_star) ** 2) ** (1 / (gamma - 1)) / M_star
+    integral = ((1 - ((k_star / M_star_l) * M_star) ** 2) ** (1 / (gamma - 1)) )/ M_star
 
     return integral
 
@@ -91,7 +91,7 @@ def Q(M_star_l, M_star_u, gamma, n):
 def C(M_star_l, M_star_u, gamma, n, k_star):
     # First we need to spread out our Q values
 
-    integral = k_star*M_star_func_int(k_star, M_star_l, M_star_u, gamma, n)
+    integral = k_star * M_star_func_int(k_star, M_star_l, M_star_u, gamma, n)
 
     C_val = (
         1

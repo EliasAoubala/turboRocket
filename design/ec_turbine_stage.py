@@ -6,16 +6,16 @@ if __name__ == "__main__":
 
     ANGLE_CONVERSION = 180 / np.pi
 
-    target_fluid = IdealFluid(P=20e5, T=816.495, R_gas=1305.355, gamma=1.148 )
+    target_fluid = IdealFluid(P=20e5, T=816.495, R_gas=1305.355, gamma=1.3 )
 
     super = SupersonicProfile(
-        beta_i=57.194,                  # Relative angles
-        beta_o=-57.194,                 # Relative Angles
-        M_i = 2.08,                     # Relative Mach Numbers
-        M_o = 2.08,                     # Relative Mach Numbers
-        M_u = 3,
-        M_l = 2,
-        m_dot = 0.0092,
+        beta_i=68.34,                  # Relative angles
+        beta_o=-68.34,                 # Relative Angles
+        M_i = 1.846,                     # Relative Mach Numbers Nominally
+        M_o = 1.846,                     # Relative Mach Numbers Nominally
+        M_u = 2.45,
+        M_l = 1.5,
+        m_dot = 0.0184,
         h = 15e-3,
         fluid=target_fluid,
     )
@@ -64,16 +64,21 @@ if __name__ == "__main__":
     
     print("FLOW Serperation")
     
-    print("\n-----------------------------------------")
+    print("\n-----------------------------------------\n")
     
     
     super.M_u_max()
     super.M_l_min()
-    
+
     
     print(f"Maximum Possible M_u: {super._M_u_max:.3f}")
     print(f"Current M_u: {super._M_u:.3f}")
     print(f"Margin: {(super._M_u_max - super._M_u)/super._M_u}")
+
+     
+    if super._M_u_max < super._M_u:
+        raise ValueError(f"Mach number too high on upper surface: {super._M_u} > {super._M_u_max}")
+
     
     print("\n----------------------------------------- \n")
      
@@ -97,26 +102,28 @@ if __name__ == "__main__":
     
     print(f"Maximum M_i: {super._M_i_max:.3f}")
     print(f"Nominal M_i: {super._M_i:.3f}")
-    print(f"Startup M_i: {super._M_i_start:.3f}")
+    
+    
+    print(f"V_i_max {super._v_i_max*ANGLE_CONVERSION}, v_u: {super._v_u*ANGLE_CONVERSION}, v_l: {super._v_l*ANGLE_CONVERSION}")
     
     if super._M_i_max < super._M_i:
-        raise ValueError(f"Mach number exceeded: {super._M_i} > {super._M_i_max}")
+        raise ValueError(f"Mach number exceeded Nominally: {super._M_i} > {super._M_i_max}")
 
-    # super.plot_circles(100)
+    super.plot_circles(100)
 
-    # # Now we get the transition co-ordinates for the lower area
-    # super.inlet_lower_transition()
-    # super.inlet_upper_transition()
-    # super.outlet_lower_transition()
-    # super.outlet_upper_transition()
-    # super.straight_line_segments()
-    # super.generate_blade(100)
+    # Now we get the transition co-ordinates for the lower area
+    super.inlet_lower_transition()
+    super.inlet_upper_transition()
+    super.outlet_lower_transition()
+    super.outlet_upper_transition()
+    super.straight_line_segments()
+    super.generate_blade(100)
 
-    # super.plot_transition()
+    super.plot_transition()
 
-    # print(super._g_star)
-    # print(super._R_l_star - super._R_u_star)
+    print(super._g_star)
+    print(super._R_l_star - super._R_u_star)
 
-    # super.plot_all_shift(100)
+    super.plot_all_shift(100)
     
-    # super.plot_all_shift_to_scale(100)
+    super.plot_all_shift_to_scale(100)

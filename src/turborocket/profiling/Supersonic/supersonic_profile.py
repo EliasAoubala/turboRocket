@@ -375,6 +375,11 @@ class SupersonicProfile():
         ax.legend()
         plt.show()
         
+    def generate_xy(self, NUMBER_OF_POINTS):
+        # This function creates
+        
+        
+        
     def M_i_max(self):
         """
         This function solves for the critical inlet mach number for the profile to ensure the geometry can be started succesfully.
@@ -425,6 +430,8 @@ class SupersonicProfile():
         self._M_i_max = inv_M_star(gamma = GAMMA,
                                    M_star = self._M_i_star_max)
         
+        self._v_i_max = prandtl_meyer(GAMMA, self._M_i_star_max)
+        
         return self._M_i_max
         
     def M_u_max(self):
@@ -433,7 +440,7 @@ class SupersonicProfile():
         """
         GAMMA = self._fluid.get_gamma()
         
-        self._M_u_star_max = M_star_u_max(m_star_o = self._M_o_star,
+        self._M_u_star_max = M_star_u_max(M_star_o = self._M_o_star,
                                      gamma = GAMMA)
         
         self._M_u_max = inv_M_star(gamma = GAMMA,
