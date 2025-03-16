@@ -15,8 +15,8 @@ if __name__ == "__main__":
         M_o = 1.846,                     # Relative Mach Numbers Nominally
         M_u = 2.45,
         M_l = 1.5,
-        m_dot = 0.0184,
-        h = 15e-3,
+        m_dot = 0.0158,
+        h = 10e-3,
         fluid=target_fluid,
     )
 
@@ -109,7 +109,7 @@ if __name__ == "__main__":
     if super._M_i_max < super._M_i:
         raise ValueError(f"Mach number exceeded Nominally: {super._M_i} > {super._M_i_max}")
 
-    super.plot_circles(100)
+    super.plot_circles(50)
 
     # Now we get the transition co-ordinates for the lower area
     super.inlet_lower_transition()
@@ -117,13 +117,15 @@ if __name__ == "__main__":
     super.outlet_lower_transition()
     super.outlet_upper_transition()
     super.straight_line_segments()
-    super.generate_blade(100)
+    super.generate_blade(50)
 
-    super.plot_transition()
+    # super.plot_transition()
 
-    print(super._g_star)
-    print(super._R_l_star - super._R_u_star)
+    # print(super._g_star)
+    # print(super._R_l_star - super._R_u_star)
 
-    super.plot_all_shift(100)
+    super.plot_all_shift(50)
     
-    super.plot_all_shift_to_scale(100)
+    super.plot_all_shift_to_scale(50)
+
+    super.generate_xy(50)

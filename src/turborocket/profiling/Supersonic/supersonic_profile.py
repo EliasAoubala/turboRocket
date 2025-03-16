@@ -13,6 +13,8 @@ from turborocket.fluids.ideal_gas import IdealFluid
 import numpy as np
 import matplotlib.pyplot as plt
 
+import pandas as pd
+
 class SupersonicProfile():
     
     def __init__(self,
@@ -376,7 +378,58 @@ class SupersonicProfile():
         plt.show()
         
     def generate_xy(self, NUMBER_OF_POINTS):
-        # This function creates
+        
+        # This function creates an .txt file containing x,y co-ordinates for the blade profiles automatically generated.
+        
+        # We simply need to create a master x-array and y-array, create a pandas dataframe, then export as csv
+        x_array = np.array([])
+        y_array = np.array([])
+        z_array = np.array([])
+              
+        
+        # x_array = np.append(x_array, [self._x_i_start * self._r_star_a][::-1]) # , self._x_i_end * self._r_star_a
+        # y_array = np.append(y_array, [self._y_i_start_sf * self._r_star_a][::-1]) # , self._y_i_end_sf * self._r_star_a
+        
+        x_array = np.append(x_array, (self._xlkt_il * self._r_star_a)[-1])
+        y_array = np.append(y_array, (self._ylkt_il * self._r_star_a)[-1])
+            
+        x_array = np.append(x_array, (self._xlkt_iu * self._r_star_a)[:1:-1])
+        y_array = np.append(y_array, (self._ylkt_iu_sf * self._r_star_a)[:1:-1])
+    
+        
+        x_array = np.append(x_array, self._x_u_array * self._r_star_a)
+        y_array = np.append(y_array, self._y_u_array_sf * self._r_star_a)
+
+        
+        x_array = np.append(x_array, (self._xlkt_ou * self._r_star_a)[1:-1])
+        y_array = np.append(y_array, (self._ylkt_ou_sf * self._r_star_a)[1:-1])
+   
+    
+        # x_array = np.append(x_array, [self._x_o_start * self._r_star_a]) #, self._x_o_end * self._r_star_a])
+        # y_array = np.append(y_array, [self._y_o_start_sf * self._r_star_a]) #, self._y_o_end_sf * self._r_star_a])
+
+        
+        x_array = np.append(x_array, (self._xlkt_ol * self._r_star_a)[:1:-1])
+        y_array = np.append(y_array, (self._ylkt_ol * self._r_star_a)[:1:-1])
+
+        
+        x_array = np.append(x_array, (self._x_l_array * self._r_star_a)[::-1])
+        y_array = np.append(y_array, (self._y_l_array * self._r_star_a)[::-1])
+
+            
+        x_array = np.append(x_array, (self._xlkt_il * self._r_star_a)[1:-2])
+        y_array = np.append(y_array, (self._ylkt_il * self._r_star_a)[1:-2])
+
+        # x_array = np.append(x_array, (self._xlkt_il * self._r_star_a)[-1])
+        # y_array = np.append(y_array, (self._ylkt_il * self._r_star_a)[-1])
+
+        z_array = np.zeros(x_array.size)
+        
+        df = pd.DataFrame(data={"x": x_array*1e3, "y": y_array*1e3, "z": z_array})
+        
+        df.to_csv("blade.txt", header=False, index = False, sep="\t")
+        
+        
         
         
         
