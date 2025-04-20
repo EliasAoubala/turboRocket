@@ -210,3 +210,5 @@ class Aungier:
             * (C_l / (s / c)) ** 2
             * (np.cos(alpha_2) ** 2 / np.cos(alpha_m) ** 3)
         )
+
+class 
