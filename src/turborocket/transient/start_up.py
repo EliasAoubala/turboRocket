@@ -100,18 +100,10 @@ class GasGenerator:
             float: Combustion Parameter
         """
 
-        # We can define our cea_object and get the combustion temperature
-        to = self._cea.get_Temperatures(Pc=pcc, MR=mr)[0] * eta_c**2
+        # Getting combustion c_star value (this is converted from ft/s to m/s)
+        c_star = self._cea.get_Cstar(Pc=pcc, MR=mr) * 0.3048 * eta_c
 
-        # Getting combustion gas properties
-        cp = self._cea.get_Chamber_Cp(Pc=pcc, MR=mr)
-        gamma = self._cea.get_Chamber_MolWt_gamma(Pc=pcc, MR=mr)[1]
-        R = cp * (gamma - 1) / gamma
-
-        # Evaluating for throat area of gas generator
-        param = (gamma / (R * to)) * (2 / (gamma + 1)) ** ((gamma + 1) / (gamma - 1))
-
-        return pcc * np.sqrt(param)
+        return pcc / c_star
 
     def size_system(self, m_dot: float, eta_c: float = 0.8) -> dict:
         """This function sizes the gas generator
@@ -132,9 +124,13 @@ class GasGenerator:
         self._a_cc = self._m_dot / (param)
 
         # Solving for new injection conditions
-        self._a_fu = self._a_m_fu * self._m_dot / (self._mr + 1)
+        self._m_dot_fu = self._m_dot / (self._mr + 1)
 
-        self._a_ox = self._a_m_ox * self._mr * self._m_dot / (self._mr + 1)
+        self._a_fu = self._a_m_fu * self._m_dot_fu
+
+        self._m_dot_ox = self._m_dot * (self._mr / (self._mr + 1))
+
+        self._a_ox = self._a_m_ox * self._m_dot_ox
 
         dic = self.get_cond(
             ox_inlet=self._ox_obj,
@@ -171,10 +167,13 @@ class GasGenerator:
         param = self.combustion_param(mr=mr, pcc=pcc, eta_c=eta_c)
         m_dot_t = self._a_cc * param
 
+        m_dot_o = m_dot_t * mr / (mr + 1)
+        m_dot_f = m_dot_t / (mr + 1)
+
         ox_stiff = (p_ox - pcc) / pcc
         fu_stiff = (p_fu - pcc) / pcc
 
-        # Finally, we can get the combustion gas thermal conditions
+        # Finally, we can get the combustion gas thermal conditions - this assumes ideal gas application
         to = self._cea.get_Temperatures(Pc=pcc, MR=mr)[0] * eta_c**2
 
         # Getting combustion gas properties
@@ -191,6 +190,26 @@ class GasGenerator:
             "gamma": gamma,
             "ox_stiffness": ox_stiff,
             "fu_stiffness": fu_stiff,
+            "m_dot_t": m_dot_t,
+            "m_dot_o": m_dot_o,
+            "m_dot_f": m_dot_f,
+        }
+
+        return dic
+
+    def get_geometry(self) -> dict:
+        """Function that gets the injector geometry for the user
+
+        Returns:
+            dict: Dictionary Describing key parameters
+        """
+
+        dic = {
+            "CdA_ox": self._cdo * self._a_ox,
+            "CdA_fu": self._cdf * self._a_fu,
+            "A_fu": self._a_fu,
+            "A_ox": self._a_ox,
+            "Acc": self._a_cc,
         }
 
         return dic
@@ -220,7 +239,7 @@ class GasGenerator:
         p_ox = ox_in.get_pressure()
         p_fu = fu_in.get_pressure()
 
-        mr = alpha * np.sqrt((p_ox - pcc) / (p_fu - pcc))
+        mr = alpha * ((p_ox - pcc) / (p_fu - pcc)) ** (1 / 2)
 
         # We can now solve the combustion parameter at this condition
         param = self.combustion_param(pcc=pcc, mr=mr, eta_c=eta_c)
@@ -262,7 +281,7 @@ class GasGenerator:
             x_guess=pcc_guess,
             dx=0.1e5,
             n=500,
-            relax=0.1,
+            relax=1,
             target=0,
             params=[ox_in, fu_in, self._kf, self._alpha, self._eta_c],
         )
