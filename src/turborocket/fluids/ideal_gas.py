@@ -136,11 +136,11 @@ class IdealFluid:
         if p1 is not None:
             dh = self.get_enthalpy_drop(p1)
 
-            return np.sqrt(dh)
+            return np.sqrt(2 * dh)
 
         elif self._dh is not None:
 
-            return np.sqrt(dh)
+            return np.sqrt(2 * dh)
 
         else:
             raise TypeError(

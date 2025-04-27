@@ -32,12 +32,18 @@ class TurbineStageDesign:
 
         return
 
-    def set_operating_point(self, u_cis: float, Rt: float) -> None:
+    def set_operating_point(
+        self, u_cis: float, Rt: float, b: float, t: float, delta_r: float, N: float
+    ) -> None:
         """Function to define the turbine stage operating set-point, based on the pressure ratio and blade speed ratio
 
         Args:
             u_cis (float): Normalised Blade Speed (by Isentropic Velocity)
             Rt (float): Pressure ratio across turbine stage (P_o/P_1)
+            b (float): Blade Chord Length (m)
+            t (float): Distance between Blades (Blade Spacing) (m)
+            delta_r (float): Rotor Tip Clearance
+            N (float): Number of Nozzles used on the stator
         """
         # Parameter validaiton
         if u_cis < 0:
@@ -46,6 +52,10 @@ class TurbineStageDesign:
         if Rt < 0:
             raise ValueError(f"Rt must be a postiive number: {Rt} <= 0")
 
+        self._b = b
+        self._t = t
+        self._delta_r = delta_r
+        self._N = N
         self._u_cis = u_cis
         self._rt = Rt
 
@@ -73,8 +83,9 @@ class TurbineStageDesign:
         Returns:
             float: Blade Speed (m/s)
         """
-        if self._cis is None:
-            self._cis = self._gas.get_cis(p1=self.get_p1())
+        self._cis = self._gas.get_cis(p1=self.get_p1())
+
+        print(self._cis)
 
         self._u = self._u_cis * self._cis
 
@@ -87,11 +98,7 @@ class TurbineStageDesign:
             float: Mean Turbine Diameter (m)
         """
 
-        if self._u is None:
-            self._d_mean = 2 * self._omega / self.get_blade_speed()
-
-        else:
-            self._d_mean = 2 * self._omega / self._u
+        self._d_mean = 2 * self.get_blade_speed() / self._omega
 
         return self._d_mean
 
@@ -106,7 +113,7 @@ class TurbineStageDesign:
 
         return self._cis
 
-    def get_actual_spouting(self, phi: float = 0.9) -> float:
+    def get_actual_spouting(self, phi: float = 0.93) -> float:
         """This function solves for the actual spouting velocity for the turbine stage nozzle
 
         Args:
@@ -151,7 +158,13 @@ class TurbineStageDesign:
 
             return self._gas.get_expanded_t(M_star=m_star)
 
-        self._t1 = self._gas.get_expanded_t(m_star=self.get_m_star(c=self._c1))
+        self._a_star_1 = self._gas.get_critical_speed()
+
+        self._t1 = self._gas.get_expanded_t(
+            M_star=self.get_m_star(a_star=self._a_star_1, c=self._c1)
+        )
+
+        return self._t1
 
     def get_p1_o(self) -> float:
         """Function that solves for nozzle exit stagnation pressure conditions
@@ -161,10 +174,17 @@ class TurbineStageDesign:
         """
         po = self._gas.get_pressure()
 
-        p_rat_nom = self._gas.get_expanded_p(M_star=self.get_m_star(c=self._c1)) / po
+        p_rat_nom = (
+            self._gas.get_expanded_p(
+                M_star=self.get_m_star(a_star=self._a_star_1, c=self._c1)
+            )
+            / po
+        )
 
         p_rat_act = (
-            self._gas.get_expanded_p(M_star=(self.get_m_star(c=self._c1) / self._phi))
+            self._gas.get_expanded_p(
+                M_star=(self.get_m_star(a_star=self._a_star_1, c=self._c1) / self._phi)
+            )
             / po
         )
 
@@ -241,7 +261,7 @@ class TurbineStageDesign:
 
         g = self._gas.get_gamma()
 
-        return M_crit * (((g + 1) / 2) * (1 - ((g - 1) / (g + 1)) * M_crit)) ** (
+        return M_crit * (((g + 1) / 2) * (1 - ((g - 1) / (g + 1)) * M_crit**2)) ** (
             1 / (g - 1)
         )
 
@@ -264,7 +284,7 @@ class TurbineStageDesign:
         """
         R = self._gas.get_R()
         To = self._gas.get_temperature()
-        M_c1 = self.get_m_star(c=self._c1)
+        M_c1 = self.get_m_star(a_star=self._a_star_1, c=self._c1)
 
         self._eps = (self._m_dot * np.sqrt(R * To)) / (
             self._sc
@@ -280,7 +300,6 @@ class TurbineStageDesign:
 
     def get_relative_speed(
         self,
-        c1: float,
     ) -> float:
         """Function solves for the relative speed
 
@@ -292,7 +311,8 @@ class TurbineStageDesign:
         """
 
         self._w1 = np.sqrt(
-            (c1 * np.cos(self._alpha) - self._u) ** 2 + (c1 * np.sin(self._alpha)) ** 2
+            (self._c1 * np.cos(self._alpha) - self._u) ** 2
+            + (self._c1 * np.sin(self._alpha)) ** 2
         )
 
         return self._w1
@@ -323,22 +343,6 @@ class TurbineStageDesign:
 
         return self._t01_rel
 
-    def get_p1_or(self) -> float:
-        """Function that solves for the rotor relative stagnation pressure
-
-        Returns:
-            float: Rotor Relative stagnation Pressure
-        """
-        po = self._gas.get_pressure()
-
-        p_rat_c1 = self._gas.get_expanded_p(M_star=self.get_m_star(c=self._c1)) / po
-
-        p_rat_w1 = self._gas.get_expanded_p(M_star=self.get_m_star(c=self._w1)) / po
-
-        self._po_1r = self._po_1 * (p_rat_c1 / p_rat_w1)
-
-        return self._po_1r
-
     def get_a_star_w(self) -> float:
         """This Function solves for the relative critical velocity of the gas
 
@@ -352,11 +356,33 @@ class TurbineStageDesign:
 
         return self._a_star_2
 
-    def phi_r(
-        self,
-        AR: float,
-        beta_2: float,
-    ) -> float:
+    def get_p1_or(self) -> float:
+        """Function that solves for the rotor relative stagnation pressure
+
+        Returns:
+            float: Rotor Relative stagnation Pressure
+        """
+        po = self._gas.get_pressure()
+
+        p_rat_c1 = (
+            self._gas.get_expanded_p(
+                M_star=self.get_m_star(a_star=self._a_star_1, c=self._c1)
+            )
+            / po
+        )
+
+        p_rat_w1 = (
+            self._gas.get_expanded_p(
+                M_star=self.get_m_star(a_star=self._a_star_2, c=self._w1)
+            )
+            / po
+        )
+
+        self._po_1r = self._po_1 * (p_rat_c1 / p_rat_w1)
+
+        return self._po_1r
+
+    def phi_r(self, AR: float, beta_2: float, t: float) -> float:
         """Function
 
         Args:
@@ -366,10 +392,14 @@ class TurbineStageDesign:
             float: Aspect Ratio of the blade.
         """
 
+        # This is absolute mach number, rather than the critical mach number, to convert - we just need to know the temperature at this condition.
+
+        M_w_1 = self._w1 / self._a_star_2
+
         self._phi_r = (
             (1 - 0.23 * (1 - (self._beta_1 + beta_2) / np.pi) ** 3)
             * (1 - 0.05 * (M_w_1 - 1) ** 2)
-            * (1 - 0.06 * AR)
+            * (1 - 0.06 * (1 / AR))
             * (1 - t / (2 * np.pi * self._eps * self._d_mean))
         )
 
@@ -394,9 +424,19 @@ class TurbineStageDesign:
         """
         po = self._gas.get_pressure()
 
-        p_rat_w1 = self._gas.get_expanded_p(M_star=self.get_m_star(c=self._w1)) / po
+        p_rat_w1 = (
+            self._gas.get_expanded_p(
+                M_star=self.get_m_star(a_star=self._a_star_2, c=self._w1)
+            )
+            / po
+        )
 
-        p_rat_w2 = self._gas.get_expanded_p(M_star=self.get_m_star(c=self._w2)) / po
+        p_rat_w2 = (
+            self._gas.get_expanded_p(
+                M_star=self.get_m_star(a_star=self._a_star_2, c=self._w2)
+            )
+            / po
+        )
 
         self._po_2r = self._po_1r * (p_rat_w1 / p_rat_w2)
 
@@ -420,7 +460,7 @@ class TurbineStageDesign:
             self._eps * np.pi * self._po_2r * q_w2 * k * self._sb * self._d_mean
         )
 
-        self._beta_2 = np.arctan(sin_beta_2)
+        self._beta_2 = np.arcsin(sin_beta_2)
 
         return self._beta_2
 
@@ -435,7 +475,7 @@ class TurbineStageDesign:
 
         R = self._gas.get_R()
 
-        self._t2 = self._t02_rel - ((g - 1) / (2 * g * R)) * self._w2**2
+        self._t2 = self._t01_rel - ((g - 1) / (2 * g * R)) * self._w2**2
 
         return self._t2
 
@@ -475,9 +515,24 @@ class TurbineStageDesign:
         """
         g = self._gas.get_gamma()
 
+        R = self._gas.get_R()
+
         self._to2 = self._t2 + ((g - 1) / (2 * g * R)) * self._c2**2
 
         return self._to2
+
+    def get_a_star_c2(self) -> float:
+        """This Function solves for the relative critical velocity of the gas
+
+        Returns:
+            float: a_star_w
+        """
+        g = self._gas.get_gamma()
+        R = self._gas.get_R()
+
+        self._a_star_3 = np.sqrt(((2 * g) / (g + 1)) * R * self._to2)
+
+        return self._a_star_3
 
     def get_po2(self) -> float:
         """Function for getting the exit stagnation pressure of the turbine stage
@@ -485,9 +540,9 @@ class TurbineStageDesign:
         Returns:
             float: Exit Stagnation Pressure of the Turbine Stage
         """
-        self._p2 = self._p1 / self._rt
+        self._p2 = self._p1
 
-        m_star_c2 = self.get_m_star(a_star=self._a_star_2, c=self._c2)
+        m_star_c2 = self.get_m_star(a_star=self._a_star_3, c=self._c2)
 
         p_rat_c2 = self._gas.get_expanded_p(M_star=m_star_c2) / self._gas.get_pressure()
 
@@ -507,7 +562,7 @@ class TurbineStageDesign:
         """
 
         self._phi_l = (
-            np.sqrt(1 + alpha_t * (1 / (self._phi * np.sin(self._alpha)) ** 2 - 1))
+            np.sqrt(1 + alpha_t * ((1 / (self._phi * np.sin(self._alpha)) ** 2) - 1))
             * (1 + (self._sb / self._d_mean))
             * (delta_r / self._sb)
         )
@@ -547,6 +602,7 @@ class TurbineStageDesign:
             2
             * (self._phi**2)
             * (self._u / self._c1)
+            * (np.cos(self._alpha) - (self._u / self._c1))
             * (1 + self._phi_r * (np.cos(self._beta_2) / np.cos(self._beta_1)))
         )
 
@@ -589,7 +645,7 @@ class TurbineStageDesign:
             float: Power Produced from Turbine
         """
 
-        self._p = self._eta * self._gas.get_enthalpy_drop(p1=self._p1)
+        self._p = self._eta * self._gas.get_enthalpy_drop(p1=self._p1) * self._m_dot
 
         return self._p
 
@@ -606,8 +662,15 @@ class TurbineStageDesign:
         angles_dict = {}
         velocities_dict = {}
         performance_dict = {}
+        mach_dict = {}
+
+        pressure_dict["p_0"] = self._gas.get_pressure()
+
+        temperature_dict["t_0"] = self._gas.get_temperature()
 
         pressure_dict["p_1"] = self.get_p1()
+
+        performance_dict["dh"] = self._gas.get_enthalpy_drop(p1=self._p1)
 
         velocities_dict["u"] = self.get_blade_speed()
 
@@ -623,21 +686,52 @@ class TurbineStageDesign:
 
         geometry_dict["A_1"] = self.get_A1()
 
-        geometry_dict["s_b"] = self.get_nozzle_height()
+        geometry_dict["s_c"] = self.get_nozzle_height(N=self._N)
 
-        geometry_dict["s_r"] = self.get_blade_height()
+        geometry_dict["s_b"] = self.get_blade_height()
 
         geometry_dict["D_hub"], geometry_dict["D_tip"] = self.get_rotor_diameters()
 
         performance_dict["eps"] = self.get_partial_admission()
 
-        angles_dict["beta_1"] = self.get_beta_1()
+        velocities_dict["w_1"] = self.get_relative_speed()
+
+        angles_dict["beta_1"] = self.get_beta_1() * 180 / np.pi
 
         temperature_dict["t_1o_r"] = self.get_relative_temp()
 
+        velocities_dict["a_star_2"] = self.get_a_star_w()
+
         pressure_dict["p_1o_r"] = self.get_p1_or()
 
-        self.get_a_star_w()
+        # We can loop iteratively here to figure out what our actual loss coefficient will be
+        loop = True
+        beta_2 = self._beta_1
+
+        geometry_dict["AR"] = self._sb / self._b
+
+        while loop:
+
+            _ = self.phi_r(AR=(self._sb / self._b), beta_2=beta_2, t=self._t)
+
+            _ = self.get_w2()
+
+            _ = self.get_p2_or()
+
+            beta_2_test = self.get_beta_2()
+
+            error = abs((beta_2_test - beta_2) / beta_2)
+
+            print(f"Current Error: {error*100} %")
+
+            if error < 1e-4:
+                loop = False
+
+            beta_2 = beta_2_test
+
+        performance_dict["phi_r"] = self.phi_r(
+            AR=(self._sb / self._b), beta_2=beta_2, t=self._t
+        )
 
         velocities_dict["w_2"] = self.get_w2()
 
@@ -649,17 +743,21 @@ class TurbineStageDesign:
 
         velocities_dict["c_2"] = self.get_c2()
 
-        angles_dict["alpha_2"] = self.get_alpha_2()
+        angles_dict["alpha_2"] = self.get_alpha_2() * 180 / np.pi
 
         temperature_dict["t_2o"] = self.get_t_o2()
 
+        velocities_dict["a_star_3"] = self.get_a_star_c2()
+
         pressure_dict["p_2o"] = self.get_po2()
 
-        performance_dict["phi_l"] = self.get_phi_l()
+        performance_dict["phi_l"] = self.get_phi_l(delta_r=self._delta_r, alpha_t=0)
 
         performance_dict["m_leakage"] = self.get_m_leakage()
 
         performance_dict["eta_l"] = self.get_leakage_loss()
+
+        performance_dict["phi"] = self._phi
 
         performance_dict["eta_h"] = self.get_eta_h()
 
@@ -669,12 +767,19 @@ class TurbineStageDesign:
 
         performance_dict["Power"] = self.get_power()
 
+        mach_dict["m_star_c1"] = self.get_m_star(a_star=self._a_star_1, c=self._c1)
+        mach_dict["m_star_w1"] = self.get_m_star(a_star=self._a_star_2, c=self._w1)
+        mach_dict["m_star_w2"] = self.get_m_star(a_star=self._a_star_2, c=self._w2)
+        mach_dict["m_star_c2"] = self.get_m_star(a_star=self._a_star_1, c=self._c2)
+
         final_dict = {
             "performance": performance_dict,
             "velocity": velocities_dict,
-            "pressures": pressure_dict,
+            "pressure": pressure_dict,
             "temperature": temperature_dict,
             "geometry": geometry_dict,
+            "mach": mach_dict,
+            "angles": angles_dict,
         }
 
         return final_dict
