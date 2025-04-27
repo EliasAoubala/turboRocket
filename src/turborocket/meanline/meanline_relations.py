@@ -2,7 +2,7 @@
 This file contains the main objects used for the design of the turbine stage
 """
 
-from turborocket.fluids.ideal_gas import IdealFluid
+from turborocket.fluids.fluids import IdealGas
 import numpy as np
 from typing import List
 
@@ -12,9 +12,7 @@ class TurbineStageDesign:
     Class defining a generic turbine stage design and performance analysis class
     """
 
-    def __init__(
-        self, gas: IdealFluid, m_dot: float, omega: float, alpha: float
-    ) -> None:
+    def __init__(self, gas: IdealGas, m_dot: float, omega: float, alpha: float) -> None:
         """Constructor for the Turbine Stage Design Object
 
         Args:

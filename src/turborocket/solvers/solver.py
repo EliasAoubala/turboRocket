@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.integrate import trapz
+from numpy import trapz
 
 
 def adjoint(func, x_guess, dx, n, relax, target, params=[], RECORD_HIST=False):
@@ -74,4 +74,3 @@ def integrator(func, x_start, x_end, n, params=[]):
     integral = trapz(int_values, x_array)
 
     return integral
-

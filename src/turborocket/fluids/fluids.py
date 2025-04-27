@@ -4,7 +4,7 @@ import numpy as np
 # We can create a generic class characterising an ideal gas
 
 
-class IdealFluid:
+class IdealGas:
     def __init__(
         self,
         p: float,
@@ -183,3 +183,59 @@ class IdealFluid:
         return self._p * (
             1 - ((self._gamma - 1) / (self._gamma + 1)) * M_star**2
         ) ** (self._gamma / (self._gamma - 1))
+
+
+class IncompressibleFluid:
+    """Generic Function Defining the Properties of an Incompressible Fluid"""
+
+    def __init__(
+        self, rho: float, P: float, T: float | None = None, mue: float | None = None
+    ) -> None:
+        """Constructor for the Incompressible Fluid
+
+        Args:
+            rho (float): _description_
+            mue (float | None, optional): _description_. Defaults to None.
+        """
+
+        self._rho = rho
+        self._P = P
+        self._T = T
+        self._mue = mue
+
+        return
+
+    def get_density(self) -> float:
+        """Getter Function for fluid Density
+
+        Returns:
+            float: Fluid Density (kg/m^3)
+        """
+
+        return self._rho
+
+    def get_pressure(self) -> float:
+        """Getter function for fluid pressure
+
+        Returns:
+            float: Fluid Pressure (Pa)
+        """
+
+        return self._P
+
+    def get_temperature(self) -> float:
+        """Getter function for fluid temperature
+
+        Returns:
+            float: Fluid Temperature (K)
+        """
+
+        return self._T
+
+    def get_viscosity(self) -> float:
+        """Getter function for fluid viscosity
+
+        Returns:
+            float: Fluid viscosity (Pa s)
+        """
+        return self._mue
