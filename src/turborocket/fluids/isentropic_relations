@@ -1,0 +1,6 @@
+
+
+
+def density(P, R, T):
+    
+    return P/(R*T)
