@@ -407,6 +407,153 @@ class CombustionChamber:
 
         return (m_dot_ox, m_dot_fu)
 
+    def transient_engine_nofire(
+        self,
+        ox_in: IncompressibleFluid,
+        fu_in: IncompressibleFluid,
+        m_dot_ox: float,
+        m_dot_fu: float,
+        eta_c: float = 0.85,
+    ) -> dict:
+        """Function for the case where the engine hasnt lit yet.
+
+        Args:
+            ox_in (IncompressibleFluid): _description_
+            fu_in (IncompressibleFluid): _description_
+            m_dot_ox (float): _description_
+            m_dot_fu (float): _description_
+            eta_c (float, optional): _description_. Defaults to 0.85.
+
+        Returns:
+            dict: Dictionary
+        """
+
+        dp_dt = 0
+        self._pcc_transient = 1e5
+
+        dic = {
+            "dp_dt": dp_dt,
+            "P_cc": self._pcc_transient,
+            "MR": 0,
+            "T_o": 0,
+            "Cp": 1005,
+            "gamma": 1.4,
+            "ox_stiffness": 0,
+            "fu_stiffness": 0,
+            "m_dot_t": 0,
+            "m_dot_o": m_dot_ox,
+            "m_dot_f": m_dot_fu,
+        }
+
+        return dic
+
+    def transient_startup(
+        self,
+        ox_in: IncompressibleFluid,
+        fu_in: IncompressibleFluid,
+        m_dot_ox: float,
+        m_dot_fu: float,
+        eta_c: float = 0.85,
+    ) -> dict:
+
+        MR_current = m_dot_ox / m_dot_fu
+
+        # We need to solve for the combustion density at the current time
+        rho_c = self.get_density(Pcc=self._pcc_transient, MR=MR_current, eta_c=eta_c)
+
+        # W need to get the c_star of the current condition
+        c_star = self.get_c_star(Pcc=self._pcc_transient, MR=MR_current, eta_c=eta_c)
+
+        # Finally we can solve for the pressure gradient
+        dp_dt = (self._pcc_transient / (rho_c * self._v_cc)) * (
+            m_dot_ox + m_dot_fu - (self._pcc_transient * self._a_cc) / c_star
+        )
+
+        # We need to now evaluate for the system performance paramets
+
+        dic = {
+            "dp_dt": dp_dt,
+            "P_cc": self._pcc_transient,
+            "MR": MR_current,
+            "T_o": self._cea.get_Temperatures(
+                Pc=self._pcc_transient / 1e5, MR=MR_current, frozen=1
+            )[0]
+            * eta_c**2,
+            "Cp": self._cea.get_Chamber_Cp(Pc=self._pcc_transient / 1e5, MR=MR_current),
+            "gamma": self._cea.get_Chamber_MolWt_gamma(
+                Pc=self._pcc_transient / 1e5, MR=MR_current
+            )[1],
+            "ox_stiffness": (ox_in.get_pressure() - self._pcc_transient)
+            / self._pcc_transient,
+            "fu_stiffness": (fu_in.get_pressure() - self._pcc_transient)
+            / self._pcc_transient,
+            "m_dot_t": m_dot_fu + m_dot_ox,
+            "m_dot_o": m_dot_ox,
+            "m_dot_f": m_dot_fu,
+        }
+
+        # We store the last MR for locking
+        self._MR_transient = MR_current
+
+        return dic
+
+    def transient_shutdown(
+        self,
+        ox_in: IncompressibleFluid,
+        fu_in: IncompressibleFluid,
+        m_dot_ox: float,
+        m_dot_fu: float,
+        eta_c: float = 0.85,
+    ) -> dict:
+        """Function characterinsing the shutdown transient
+
+        Args:
+            ox_in (IncompressibleFluid): Inlet Oxidiser Object
+            fu_in (IncompressibleFluid): Fuel Injector Object
+            m_dot_ox (float): Oxidiser Mass Flow
+            m_dot_fu (float): Fuel Mass Flow
+            eta_c (float, optional): Combustion Efficiency. Defaults to 0.85.
+
+        Returns:
+            dict: _description_
+        """
+        c_star = self.get_c_star(
+            Pcc=self._pcc_transient, MR=self._MR_transient, eta_c=eta_c
+        )
+
+        rho_c = self.get_density(
+            Pcc=self._pcc_transient, MR=self._MR_transient, eta_c=eta_c
+        )
+
+        dp_dt = (self._pcc_transient / (rho_c * self._v_cc)) * (
+            -(self._pcc_transient * self._a_cc) / c_star
+        )
+
+        dic = {
+            "dp_dt": dp_dt,
+            "P_cc": self._pcc_transient,
+            "MR": self._MR_transient,
+            "T_o": self._cea.get_Temperatures(
+                Pc=self._pcc_transient / 1e5, MR=self._MR_transient, frozen=1
+            )[0]
+            * eta_c**2,
+            "Cp": self._cea.get_Chamber_Cp(
+                Pc=self._pcc_transient / 1e5, MR=self._MR_transient
+            ),
+            "gamma": self._cea.get_Chamber_MolWt_gamma(
+                Pc=self._pcc_transient / 1e5, MR=self._MR_transient
+            )[1],
+            "ox_stiffness": (ox_in.get_pressure() - self._pcc_transient)
+            / self._pcc_transient,
+            "fu_stiffness": (fu_in.get_pressure() - self._pcc_transient)
+            / self._pcc_transient,
+            "m_dot_t": m_dot_fu + m_dot_ox,
+            "m_dot_o": m_dot_ox,
+            "m_dot_f": m_dot_fu,
+        }
+
+        return dic
+
     def transient_time_step(
         self,
         ox_in: IncompressibleFluid,
@@ -435,107 +582,44 @@ class CombustionChamber:
 
             # We check if the chamber is at ambient conditions
             if self._pcc_transient <= 1e5:
-                dp_dt = 0
-                self._pcc_transient = 1e5
-
-                dic = {
-                    "dp_dt": dp_dt,
-                    "P_cc": self._pcc_transient,
-                    "MR": 0,
-                    "T_o": 0,
-                    "Cp": 1005,
-                    "gamma": 1.4,
-                    "ox_stiffness": 0,
-                    "fu_stiffness": 0,
-                    "m_dot_t": 0,
-                    "m_dot_o": m_dot_ox,
-                    "m_dot_f": m_dot_fu,
-                }
-
+                dic = self.transient_engine_nofire(
+                    ox_in=ox_in,
+                    fu_in=fu_in,
+                    m_dot_fu=m_dot_fu,
+                    m_dot_ox=m_dot_ox,
+                    eta_c=eta_c,
+                )
             else:
                 # We deplete the chamber using the c* value
-                c_star = self.get_c_star(
-                    Pcc=self._pcc_transient, MR=self._MR_transient, eta_c=eta_c
+                dic = self.transient_shutdown(
+                    ox_in=ox_in,
+                    fu_in=fu_in,
+                    m_dot_fu=m_dot_fu,
+                    m_dot_ox=m_dot_ox,
+                    eta_c=eta_c,
                 )
-
-                rho_c = self.get_density(
-                    Pcc=self._pcc_transient, MR=self._MR_transient, eta_c=eta_c
-                )
-
-                dp_dt = (self._pcc_transient / (rho_c * self._v_cc)) * (
-                    -(self._pcc_transient * self._a_cc) / c_star
-                )
-
-                dic = {
-                    "dp_dt": dp_dt,
-                    "P_cc": self._pcc_transient,
-                    "MR": self._MR_transient,
-                    "T_o": self._cea.get_Temperatures(
-                        Pc=self._pcc_transient / 1e5, MR=self._MR_transient, frozen=1
-                    )[0]
-                    * eta_c**2,
-                    "Cp": self._cea.get_Chamber_Cp(
-                        Pc=self._pcc_transient / 1e5, MR=self._MR_transient
-                    ),
-                    "gamma": self._cea.get_Chamber_MolWt_gamma(
-                        Pc=self._pcc_transient / 1e5, MR=self._MR_transient
-                    )[1],
-                    "ox_stiffness": (ox_in.get_pressure() - self._pcc_transient)
-                    / self._pcc_transient,
-                    "fu_stiffness": (fu_in.get_pressure() - self._pcc_transient)
-                    / self._pcc_transient,
-                    "m_dot_t": m_dot_fu + m_dot_ox,
-                    "m_dot_o": m_dot_ox,
-                    "m_dot_f": m_dot_fu,
-                }
 
         else:
-            # We firstly solve the injector conditions
+            # We need to check if our mass flow rates are enough for ignition - arbitrary criterion of 5%
+            m_dot_t = m_dot_fu + m_dot_ox
 
-            MR_current = m_dot_ox / m_dot_fu
+            if m_dot_t < self._m_dot * 0.05:
+                dic = self.transient_engine_nofire(
+                    ox_in=ox_in,
+                    fu_in=fu_in,
+                    m_dot_fu=m_dot_fu,
+                    m_dot_ox=m_dot_ox,
+                    eta_c=eta_c,
+                )
 
-            # We need to solve for the combustion density at the current time
-            rho_c = self.get_density(
-                Pcc=self._pcc_transient, MR=MR_current, eta_c=eta_c
-            )
-
-            # W need to get the c_star of the current condition
-            c_star = self.get_c_star(
-                Pcc=self._pcc_transient, MR=MR_current, eta_c=eta_c
-            )
-
-            # Finally we can solve for the pressure gradient
-            dp_dt = (self._pcc_transient / (rho_c * self._v_cc)) * (
-                m_dot_ox + m_dot_fu - (self._pcc_transient * self._a_cc) / c_star
-            )
-
-            # We need to now evaluate for the system performance paramets
-
-            dic = {
-                "dp_dt": dp_dt,
-                "P_cc": self._pcc_transient,
-                "MR": MR_current,
-                "T_o": self._cea.get_Temperatures(
-                    Pc=self._pcc_transient / 1e5, MR=MR_current, frozen=1
-                )[0]
-                * eta_c**2,
-                "Cp": self._cea.get_Chamber_Cp(
-                    Pc=self._pcc_transient / 1e5, MR=MR_current
-                ),
-                "gamma": self._cea.get_Chamber_MolWt_gamma(
-                    Pc=self._pcc_transient / 1e5, MR=MR_current
-                )[1],
-                "ox_stiffness": (ox_in.get_pressure() - self._pcc_transient)
-                / self._pcc_transient,
-                "fu_stiffness": (fu_in.get_pressure() - self._pcc_transient)
-                / self._pcc_transient,
-                "m_dot_t": m_dot_fu + m_dot_ox,
-                "m_dot_o": m_dot_ox,
-                "m_dot_f": m_dot_fu,
-            }
-
-            # We store the last MR for locking
-            self._MR_transient = MR_current
+            else:
+                dic = self.transient_startup(
+                    ox_in=ox_in,
+                    fu_in=fu_in,
+                    m_dot_fu=m_dot_fu,
+                    m_dot_ox=m_dot_ox,
+                    eta_c=eta_c,
+                )
 
         return dic
 
@@ -557,18 +641,34 @@ class MainEngine(CombustionChamber):
 class LiquidValve:
     """Object Defining the Behaviour of Liquid Propellant Valves"""
 
-    def __init__(self, cda: float, tau: float, s_pos_init: float = 0):
+    def __init__(
+        self,
+        cda: float,
+        tau: float,
+        s_pos_init: float = 0,
+        epsilon: float = 100,
+        L_eff: float = 100,
+    ):
         """Constructor for the liquid propellant valve
 
         Args:
             cda (float): Flow Area of the valve
             tau (float): Opening/Closing Time of the valve
+            s_pos_init (float): Initial Position of the valve
+            epsilon (float): Normalisation Parmaeter (Pa). Defaults to 100.
+            L_eff (float): Effective flow length within valve for Damping (m). Defaults to 0.015 m
         """
 
         self._cda = cda
         self._tau = tau
         self._s_pos = s_pos_init
         self._pos = s_pos_init
+        self._epsilon = epsilon
+
+        self._mdot_2 = 0
+        self._dmdot = 0
+
+        self._L_eff = self._cda * L_eff
 
         return
 
@@ -597,13 +697,14 @@ class LiquidValve:
         return
 
     def get_mdot(
-        self, upstr: IncompressibleFluid, downstr: IncompressibleFluid
+        self, upstr: IncompressibleFluid, downstr: IncompressibleFluid, dt: float
     ) -> float:
         """This function gets the massflow rate through the valve based on the upstream and downstream conditions
 
         Args:
             upstr (IncompressibleFluid): Upstream Fluid Object
             downstr (IncompressibleFluid): Downstream Fluid Object
+            dt (float): Integration Time Step
 
         Returns:
             float: Mass Flow Rate (kg/s)
@@ -615,14 +716,29 @@ class LiquidValve:
 
         if p1 > p2:
             rho = upstr.get_density()
-            sign = 1
+
         else:
             rho = downstr.get_density()
-            sign = -1
 
         a = self._cda * self._pos
 
-        m_dot = sign * a * (2 * rho * sign * (p1 - p2)) ** (1 / 2)
+        # Finally we add an inerital term to our dp based on the rate of change of mass-flow rate of the valve.
+        dp_inertia = (self._L_eff / a) * self._dmdot
+
+        print(dp_inertia / 1e5)
+
+        dpe = p1 - p2 + dp_inertia
+
+        # We normalise the flow equation to allow for non-infinite fradients at low dps
+        dp = ((dpe) ** 2 + self._epsilon**2) ** (1 / 2)
+
+        m_dot = a * ((dpe) / dp) * (2 * rho * dp) ** (1 / 2)
+
+        # We re-evaluate what dmdot is now
+        self._dmdot = (m_dot - self._mdot_2) / dt
+
+        # Finally we log our previous m_dot
+        self._mdot_2 = m_dot
 
         return m_dot
 
