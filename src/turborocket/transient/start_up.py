@@ -101,7 +101,7 @@ class GasGenerator:
         """
 
         # Getting combustion c_star value (this is converted from ft/s to m/s)
-        c_star = self._cea.get_Cstar(Pc=pcc, MR=mr) * 0.3048 * eta_c
+        c_star = self._cea.get_Cstar(Pc=pcc / 1e5, MR=mr) * 0.3048 * eta_c
 
         return pcc / c_star
 
@@ -174,11 +174,11 @@ class GasGenerator:
         fu_stiff = (p_fu - pcc) / pcc
 
         # Finally, we can get the combustion gas thermal conditions - this assumes ideal gas application
-        to = self._cea.get_Temperatures(Pc=pcc, MR=mr)[0] * eta_c**2
+        to = self._cea.get_Temperatures(Pc=pcc / 1e5, MR=mr)[0] * eta_c**2
 
         # Getting combustion gas properties
-        cp = self._cea.get_Chamber_Cp(Pc=pcc, MR=mr)
-        gamma = self._cea.get_Chamber_MolWt_gamma(Pc=pcc, MR=mr)[1]
+        cp = self._cea.get_Chamber_Cp(Pc=pcc / 1e5, MR=mr)
+        gamma = self._cea.get_Chamber_MolWt_gamma(Pc=pcc / 1e5, MR=mr)[1]
 
         # We create our Dict and finally return it
 
@@ -290,5 +290,16 @@ class GasGenerator:
         dic = self.get_cond(
             ox_inlet=ox_in, fu_inlet=fu_in, pcc=pcc_new, eta_c=self._eta_c
         )
+
+        # We can also attach the error
+        error = self.perturb_error(
+            pcc=pcc_new,
+            ox_in=ox_in,
+            fu_in=fu_in,
+            k_f=self._kf,
+            alpha=self._alpha,
+            eta_c=self._eta_c,
+        )
+        dic["error"] = error
 
         return dic
