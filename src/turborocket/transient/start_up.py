@@ -180,6 +180,8 @@ class CombustionChamber:
         cp = self._cea.get_Chamber_Cp(Pc=pcc / 1e5, MR=mr)
         gamma = self._cea.get_Chamber_MolWt_gamma(Pc=pcc / 1e5, MR=mr)[1]
 
+        R = 8314 / self._cea.get_Chamber_MolWt_gamma(Pc=pcc / 1e5, MR=mr)[0]
+
         # We create our Dict and finally return it
 
         dic = {
@@ -188,6 +190,7 @@ class CombustionChamber:
             "T_o": to,
             "Cp": cp,
             "gamma": gamma,
+            "R": R,
             "ox_stiffness": ox_stiff,
             "fu_stiffness": fu_stiff,
             "m_dot_t": m_dot_t,
@@ -647,7 +650,6 @@ class LiquidValve:
         tau: float,
         s_pos_init: float = 0,
         epsilon: float = 100,
-        L_eff: float = 100,
     ):
         """Constructor for the liquid propellant valve
 
@@ -664,11 +666,6 @@ class LiquidValve:
         self._s_pos = s_pos_init
         self._pos = s_pos_init
         self._epsilon = epsilon
-
-        self._mdot_2 = 0
-        self._dmdot = 0
-
-        self._L_eff = self._cda * L_eff
 
         return
 
@@ -722,23 +719,12 @@ class LiquidValve:
 
         a = self._cda * self._pos
 
-        # Finally we add an inerital term to our dp based on the rate of change of mass-flow rate of the valve.
-        dp_inertia = (self._L_eff / a) * self._dmdot
-
-        print(dp_inertia / 1e5)
-
-        dpe = p1 - p2 + dp_inertia
+        dpe = p1 - p2
 
         # We normalise the flow equation to allow for non-infinite fradients at low dps
-        dp = ((dpe) ** 2 + self._epsilon**2) ** (1 / 2)
+        dp_a = ((dpe) ** 2 + self._epsilon**2) ** (1 / 2)
 
-        m_dot = a * ((dpe) / dp) * (2 * rho * dp) ** (1 / 2)
-
-        # We re-evaluate what dmdot is now
-        self._dmdot = (m_dot - self._mdot_2) / dt
-
-        # Finally we log our previous m_dot
-        self._mdot_2 = m_dot
+        m_dot = a * ((dpe) / dp_a) * (2 * rho * dp_a) ** (1 / 2)
 
         return m_dot
 
@@ -751,11 +737,41 @@ class LiquidValve:
 
         return self._pos
 
+    def get_inertial_param(
+        self, upstr: IncompressibleFluid, downstr: IncompressibleFluid
+    ) -> float:
+        """This function solves for the inertial flow parameter of the valve (used for modelling inertial flows in transient conditions)
+
+        Args:
+            upstr (IncompressibleFluid): Upstream Flow Object
+            downstr (IncompressibleFluid): Downstream Flow Object
+
+        Returns:
+            float: Inertial Parameter Pressure Drop (Pa)
+        """
+
+        m_dot = self.get_mdot(upstr=upstr, downstr=downstr)
+
+        a = self._cda * self._pos
+
+        rho = upstr.get_density()
+
+        dp = m_dot**2 / (2 * rho * (a) ** 2)
+
+        return dp
+
 
 class Turbine:
     """Object That Defines the Turbine Transient Performance"""
 
-    def __init__(self, I: float, delta_b: float, a_rat: float, D_m: float, eta: float):
+    def __init__(
+        self,
+        delta_b: float,
+        a_rat: float,
+        D_m: float,
+        eta: float,
+        I: float | None = None,
+    ):
         """Constructor for the Transient Turbine Object
 
         Args:
@@ -992,11 +1008,11 @@ class Pump:
 
     def __init__(
         self,
-        I: float,
         D: float,
         Q_nom,
         eta_nom: float,
         N_nom: float,
+        I: float | None = None,
         Q_max_factor: float = 1.5,
         k_factor: float = 0.25,
     ):
@@ -1022,7 +1038,9 @@ class Pump:
             N (float): Rotational Rate for the Pump (rad/s)
         """
 
-        H_o = ((self._D * N / 2) ** 2) / self._g
+        u_o = self._D * N / 2
+
+        H_o = (u_o**2) / (2 * self._g)
 
         return H_o
 
@@ -1064,6 +1082,9 @@ class Pump:
 
         eta = self._eta_bep * (1 - (((Q - Q_bep) ** 2) / self._k))
 
+        if eta < 0:
+            eta = 0
+
         return eta
 
     def get_head(self, Q, N) -> float:
@@ -1082,6 +1103,11 @@ class Pump:
 
         # We need to get the maximum flow operating point
         Q_max = self.get_q_max(N=N)
+
+        if Q_max == 0:
+            # Pump is not spinning at all, hence no head.
+            H = 0
+            return 0
 
         # We can now solve for the head produced by the pump
         H = H_o * (1 - (Q / Q_max) ** 2)
@@ -1116,7 +1142,7 @@ class Pump:
         if eta < 0:
             eta = 0
 
-        dp = eta * (H * self._g)
+        dp = eta * (H * self._g * rho)
 
         outlet = IncompressibleFluid(rho=rho, P=p_inlet + dp)
 
@@ -1139,6 +1165,11 @@ class Pump:
         H = self.get_head(Q=Q, N=N)
 
         P_shaft = m_dot * self._g * H
+
+        if N == 0:
+            # Shaft not spinning, hence no torque
+            T = 0
+            return T
 
         T = P_shaft / N
 

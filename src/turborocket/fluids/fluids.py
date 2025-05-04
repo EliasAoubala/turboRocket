@@ -9,9 +9,9 @@ class IdealGas:
         self,
         p: float,
         t: float,
-        R: float,
         gamma: float,
-        cp: float,
+        R: float | None = None,
+        cp: float | None = None,
     ) -> None:
         """Constructor for an Ideal Gas Object
 

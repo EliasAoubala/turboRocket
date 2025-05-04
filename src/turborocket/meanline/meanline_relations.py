@@ -83,8 +83,6 @@ class TurbineStageDesign:
         """
         self._cis = self._gas.get_cis(p1=self.get_p1())
 
-        print(self._cis)
-
         self._u = self._u_cis * self._cis
 
         return self._u
@@ -201,6 +199,39 @@ class TurbineStageDesign:
         self._a1 = self._m_dot / (self._rho_1 * self._c1)
 
         return self._a1
+
+    def get_p0(self) -> float:
+        """Solves for the throat static Pressure of the Nozzle.
+
+        Returns:
+            float: Throat Static Pressure of the Nozzle (m^2)
+        """
+
+    def get_t0(self) -> float:
+        """Solves for the throat static temperature of the Nozzle
+
+        Returns:
+            float: Throat Static Temperature of the Nozzle (K)
+        """
+
+        self._t0 = ()
+
+    def get_A0(self) -> float:
+        """Solves for the Throat Area of the Nozzle.
+
+        Returns:
+            float: Throat Area of the Nozzle (m^2)
+        """
+
+        self._rho_0 = self._get_p0() / (self._gas.get_R() * self.get_t0())
+
+        self._c0 = (self._gas.get_gamma() * self._gas.get_R() * self.get_t0()) ** (
+            1 / 2
+        )
+
+        self._a0 = self._m_dot / (self._rho_0 * self._c0)
+
+        return self._a0
 
     def get_nozzle_height(self, N: int) -> float:
         """Function Solving for the height of the Nozzles
