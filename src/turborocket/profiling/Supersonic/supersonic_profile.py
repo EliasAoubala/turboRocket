@@ -20,7 +20,9 @@ from turborocket.profiling.Supersonic.constraints import (
 )
 from turborocket.profiling.Supersonic.constraints import M_star_u_max, M_star_l_min
 
-from turborocket.fluids.fluids import IdealFluid
+from turborocket.fluids.fluids import IdealGas
+
+from turborocket.profiling.Supersonic.fixed_edge import get_m_e
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -40,7 +42,7 @@ class SupersonicProfile:
         M_l: float,
         m_dot: float,
         h: float,
-        fluid: IdealFluid,
+        fluid: IdealGas,
     ) -> None:
 
         # Constant for converting angles to radians
@@ -161,39 +163,7 @@ class SupersonicProfile:
             alpha_l_i=self._alpha_l_i,
         )
 
-    def inlet_upper_transition(self):
-
-        # We specify an arbritrary number of points for the MoC
-        K_MAX = 100
-
-        # We specify an arbritary inlet absolute angle of zero
-
-        GAMMA = self._fluid.get_gamma()
-
-        [self._xlkt_iu, self._ylkt_iu] = moc_2(
-            k_max=K_MAX,
-            v_i=self._v_i,
-            v_l=self._v_u,
-            gamma=GAMMA,
-            alpha_l_i=self._alpha_u_i,
-        )
-
-    def outlet_upper_transition(self):
-
-        # We specify an arbritrary number of points for the MoC
-        K_MAX = 10
-
-        # We specify an arbritary inlet absolute angle of zero
-
-        GAMMA = self._fluid.get_gamma()
-
-        [self._xlkt_ou, self._ylkt_ou] = moc(
-            k_max=K_MAX,
-            v_i=self._v_o,
-            v_l=self._v_u,
-            gamma=GAMMA,
-            alpha_l_i=self._alpha_u_o,
-        )  # self._alpha_u_o)
+        return
 
     def outlet_lower_transition(self):
 
@@ -212,12 +182,55 @@ class SupersonicProfile:
             alpha_l_i=self._alpha_l_o,
         )  # self._alpha_l_o)
 
+        return
+
+    def inlet_upper_transition(self):
+
+        # We specify an arbritrary number of points for the MoC
+        K_MAX = 100
+
+        # We specify an arbritary inlet absolute angle of zero
+
+        GAMMA = self._fluid.get_gamma()
+
+        [self._xlkt_iu, self._ylkt_iu] = moc_2(
+            k_max=K_MAX,
+            v_i=self._v_i,
+            v_l=self._v_u,
+            gamma=GAMMA,
+            alpha_l_i=self._alpha_u_i,
+        )
+
+        return
+
+    def outlet_upper_transition(self):
+
+        # We specify an arbritrary number of points for the MoC
+        K_MAX = 10
+
+        # We specify an arbritary inlet absolute angle of zero
+
+        GAMMA = self._fluid.get_gamma()
+
+        [self._xlkt_ou, self._ylkt_ou] = moc(
+            k_max=K_MAX,
+            v_i=self._v_o,
+            v_l=self._v_u,
+            gamma=GAMMA,
+            alpha_l_i=self._alpha_u_o,
+        )  # self._alpha_u_o)
+
+        return
+
+    def generate_transitions(self):
+        """This function generates the transition points for the tubrine pro"""
+
     def straight_line_segments(self):
         # The final section for the creation of these aerofoils is to draw in the straight line segments
         # These are parallel to the flow inlet and outlet and start at the last points of the transition.
         # The straight line continues until it reaches the equivalent x-coordinate of the lower transition.
 
-        # Inlet Straight Line Segment
+        ############### Inlet Straight Line Segment ###############
         self._x_i_start = self._xlkt_iu[-1]
         self._y_i_start = self._ylkt_iu[-1]
 
@@ -229,7 +242,11 @@ class SupersonicProfile:
         # Hence we can get our last point of the segment
         self._y_i_end = self._y_i_start + delta_y_i
 
-        # Repeating for the exit straight line segment
+        # We can define our inlet co-ordinate arrays
+        self._x_i_line = np.array([self._x_i_start, self._x_i_end])
+        self._y_i_line = np.array([self._y_i_start, self._y_i_end])
+
+        ############### Outlet Straight Line Segment ###############
         self._x_o_start = self._xlkt_ou[-1]
         self._y_o_start = self._ylkt_ou[-1]
 
@@ -240,6 +257,34 @@ class SupersonicProfile:
 
         # Hence we can get our last point of the segment
         self._y_o_end = self._y_o_start + delta_y_o
+
+        # We can define our inlet co-ordinate arrays
+        self._x_o_line = np.array([self._x_o_start, self._x_o_end])
+        self._y_o_line = np.array([self._y_o_start, self._y_o_end])
+
+    def get_g_star(self) -> None:
+        """This function gets the blades spacing for the generated profile"""
+
+        self._g_star = self._ylkt_ol[-1] - self._y_o_end
+
+        return
+
+    def get_c_star(self) -> None:
+        """This function gets the blades chord length for the generated profile"""
+
+        # We take the first point and last point for the transition region
+        self._c_star = self._xlkt_ol[-1] - self._xlkt_il[-1]
+
+        return
+
+    def get_solidity(self) -> None:
+        """This function gets the blade solidity for the generated profile"""
+        self.get_g_star()
+        self.get_c_star()
+
+        self._sigma = self._c_star / self._g_star
+
+        return
 
     def generate_blade(self, NUMBER_OF_POINTS):
 
@@ -258,8 +303,6 @@ class SupersonicProfile:
 
         self._x_u_array = -self._R_u_star * np.sin(alpha_u_array)
         self._y_u_array = self._R_u_star * np.cos(alpha_u_array)
-
-        self._g_star = self._ylkt_ol[-1] - self._y_o_end  # Blade Spacing
 
         # Now Shifting all our array points for the upper blade profiling accordingly
 
@@ -332,8 +375,15 @@ class SupersonicProfile:
         ax.plot(self._xlkt_iu, self._ylkt_iu, label="Inlet Upper")
         ax.plot(self._xlkt_ol, self._ylkt_ol, label="Outlet Lower")
         ax.plot(self._xlkt_ou, self._ylkt_ou, label="Outlet Upper")
-        ax.plot([self._x_i_start, self._x_i_end], [self._y_i_start, self._y_i_end])
-        ax.plot([self._x_o_start, self._x_o_end], [self._y_o_start, self._y_o_end])
+        ax.plot(self._x_i_line, self._y_i_line)
+        ax.plot(self._x_o_line, self._y_o_line)
+
+        print(f"Y - Outlet: {self._y_o_line}")
+        print(f"X - Outlet: {self._x_o_line}")
+
+        print(f"Y - Inlet: {self._y_i_line}")
+        print(f"X - Inlet: {self._x_i_line}")
+
         ax.set_aspect("equal")
         ax.legend()
         plt.show()
@@ -351,35 +401,8 @@ class SupersonicProfile:
         ax.plot(self._xlkt_iu, self._ylkt_iu_sf, label="Inlet Upper")
         ax.plot(self._xlkt_ol, self._ylkt_ol, label="Outlet Lower")
         ax.plot(self._xlkt_ou, self._ylkt_ou_sf, label="Outlet Upper")
-        ax.plot(
-            [self._x_i_start, self._x_i_end], [self._y_i_start_sf, self._y_i_end_sf]
-        )
-        ax.plot(
-            [self._x_o_start, self._x_o_end], [self._y_o_start_sf, self._y_o_end_sf]
-        )
-        ax.set_aspect("equal")
-        ax.legend()
-        plt.show()
-
-    def plot_all_shift(self, NUMBER_OF_POINTS):
-        # This function plots the circular arcs for visual inspection
-
-        fig, ax = plt.subplots()
-
-        # We then plot our results
-
-        ax.plot(self._x_l_array, self._y_l_array)
-        ax.plot(self._x_u_array, self._y_u_array_sf)
-        ax.plot(self._xlkt_il, self._ylkt_il, label="Inlet Lower")
-        ax.plot(self._xlkt_iu, self._ylkt_iu_sf, label="Inlet Upper")
-        ax.plot(self._xlkt_ol, self._ylkt_ol, label="Outlet Lower")
-        ax.plot(self._xlkt_ou, self._ylkt_ou_sf, label="Outlet Upper")
-        ax.plot(
-            [self._x_i_start, self._x_i_end], [self._y_i_start_sf, self._y_i_end_sf]
-        )
-        ax.plot(
-            [self._x_o_start, self._x_o_end], [self._y_o_start_sf, self._y_o_end_sf]
-        )
+        ax.plot(self._x_i_line, self._y_i_line + self._g_star)
+        ax.plot(self._x_o_line, self._y_o_line + self._g_star)
         ax.set_aspect("equal")
         ax.legend()
         plt.show()
@@ -414,12 +437,12 @@ class SupersonicProfile:
             label="Outlet Upper",
         )
         ax.plot(
-            [self._x_i_start * self._r_star_a, self._x_i_end * self._r_star_a],
-            [self._y_i_start_sf * self._r_star_a, self._y_i_end_sf * self._r_star_a],
+            self._x_i_line * self._r_star_a,
+            self._y_i_line * self._r_star_a,
         )
         ax.plot(
-            [self._x_o_start * self._r_star_a, self._x_o_end * self._r_star_a],
-            [self._y_o_start_sf * self._r_star_a, self._y_o_end_sf * self._r_star_a],
+            self._x_o_line * self._r_star_a,
+            self._y_o_line * self._r_star_a,
         )
         ax.set_aspect("equal")
         ax.legend()
@@ -549,3 +572,220 @@ class SupersonicProfile:
         self._M_l_min = inv_M_star(gamma=GAMMA, M_star=self._M_l_star_min)
 
         return
+
+
+class SymmetricFiniteEdge(SupersonicProfile):
+    """This object represents a symmetric finite edge supersonic profile w/boundary layer correction.
+
+    We assume
+
+    Args:
+        SupersonicProfile (_type_): Infinite Edge Supersonic Profile Object
+    """
+
+    def __init__(
+        self,
+        beta_ei: float,
+        beta_i: float,
+        M_i: float,
+        M_u: float,
+        M_l: float,
+        m_dot: float,
+        h: float,
+        t_g_rat: float,
+        g_expand: float,
+        le_angle: float,
+        fluid: IdealGas,
+    ):
+        # First thing to do is get the acutal entry conditions for the turbine based on the farfiedl
+        ANGLE_CONVERSION = np.pi / 180
+
+        # We need to firstly solve for what the Mach number at the inlet of the turbine will be
+        M_e = get_m_e(
+            t_g_rat=t_g_rat,
+            beta_e=beta_ei * ANGLE_CONVERSION,
+            beta_i=beta_i * ANGLE_CONVERSION,
+            M_i=M_i,
+            gamma=fluid.get_gamma(),
+        )
+
+        # We can then Initialise for our turbine
+        super().__init__(
+            beta_i=beta_ei,
+            beta_o=-beta_ei,
+            M_i=M_e,
+            M_o=-M_e,
+            M_u=M_u,
+            M_l=M_l,
+            m_dot=m_dot,
+            h=h,
+            fluid=fluid,
+        )
+
+        # We then log the information as it relates to the finite leading edges and trailing edges - along with boundary layer computations.
+        self._t_g_rat = t_g_rat
+        self._g_expand = g_expand
+        self._le_angle = le_angle * ANGLE_CONVERSION
+
+        return
+
+    def get_turbine_profile(self) -> dict[str, float | list]:
+        """This Function Performs the Geometry generation for the Turbine Blade Profile
+
+        Returns:
+            dict[str, float]: Dictionary of parameters describing the turbine profile
+        """
+        # We firstly solve for our Prandtl Meyer Numebers
+        self.prantl_meyer()
+
+        # We then get our circular section parameters
+        self.circular_section()
+
+        # We solve for the upper maximum and lower minimum mach numbers to prevent flow speeration
+        self.M_u_max()
+        self.M_l_min()
+
+        # We solve for the maximum inlet mach number (at turbine inlet) before the turbine would unstarts
+        self.M_i_max()
+
+        # We solve for the key geometries of the turbine
+        self.inlet_lower_transition()
+        self.inlet_upper_transition()
+        self.outlet_lower_transition()
+        self.outlet_upper_transition()
+
+        # We define the straight line segments on the upper surface pretending their is no
+        self.straight_line_segments()
+
+        # We can now get the blade spacing (G*) and chord length (C*) to calculate our solidity
+        self.get_g_star()
+        self.get_c_star()
+        self.get_solidity()
+
+        # We can solve for our blade thickness at this stage now and generate the co-ordinates for our leading edge
+
+    #     # We can now discretise our blade
+    #     self.generate_blade(50)
+
+    # print(f"v_i {super._v_i}")
+    # print(f"v_o {super._v_o}")
+    # print(f"v_l {super._v_l}")
+    # print(f"v_u {super._v_u}")
+
+    # print(f"alpha_u_o {super._alpha_u_o} rad")
+    # print(f"alpha_u_o {super._alpha_u_o*ANGLE_CONVERSION} Degrees")
+    # print("\n")
+
+    # print(f"alpha_u_i {super._alpha_u_i} rad")
+    # print(f"alpha_u_i {super._alpha_u_i*ANGLE_CONVERSION} Degrees")
+    # print("\n")
+
+    # print(f"alpha_l_o {super._alpha_l_o} rad")
+    # print(f"alpha_l_o {super._alpha_l_o*ANGLE_CONVERSION} Degrees")
+    # print("\n")
+
+    # print(f"alpha_l_i {super._alpha_l_i} rad")
+    # print(f"alpha_l_i {super._alpha_l_i*ANGLE_CONVERSION} Degrees")
+    # print("\n")
+
+    # # Now we go onto get our non-dimentionalised sonic radii
+
+    # # super.r_star()
+
+    # # print(f"R_l_star {super._R_l_star}")
+    # # print(f"R_u_star {super._R_u_star}")
+    # # print(f"r_star {super._r_star_a}")
+    # # print(f"R_l {super._R_l_star*super._r_star_a} m")
+    # # print(f"R_u {super._R_u_star*super._r_star_a} m")
+
+    # # We now can confirm if the turbine can be started or not
+
+    # # Assessing flow serperation
+
+    # print("\n----------------------------------------- \n")
+
+    # print("FLOW Serperation")
+
+    # print("\n-----------------------------------------\n")
+
+    # super.M_u_max()
+    # super.M_l_min()
+
+    # print(f"Maximum Possible M_u: {super._M_u_max:.3f}")
+    # print(f"Current M_u: {super._M_u:.3f}")
+    # print(f"Margin: {(super._M_u_max - super._M_u)/super._M_u}")
+
+    # if super._M_u_max < super._M_u:
+    #     raise ValueError(
+    #         f"Mach number too high on upper surface: {super._M_u} > {super._M_u_max}"
+    #     )
+
+    # print("\n----------------------------------------- \n")
+
+    # print(f"Minimum Possible M_l: {super._M_l_min:.3f}")
+    # print(f"Curren M_l: {super._M_l:.3f}")
+    # print(f"Margin: {(super._M_l - super._M_l_min)/super._M_l}")
+
+    # if super._M_l < super._M_l_min:
+    #     raise ValueError(
+    #         f"Mach number too low on lower surface: {super._M_l} < {super._M_l_min}"
+    #     )
+
+    # # Assessing startability
+
+    # print("\n----------------------------------------- \n")
+
+    # print("STARTABILITY")
+
+    # print("\n----------------------------------------- \n")
+
+    # super.M_i_max()
+
+    # print(f"Maximum M_i: {super._M_i_max:.3f}")
+    # print(f"Nominal M_i: {super._M_i:.3f}")
+
+    # print(
+    #     f"V_i_max {super._v_i_max*ANGLE_CONVERSION}, v_u: {super._v_u*ANGLE_CONVERSION}, v_l: {super._v_l*ANGLE_CONVERSION}"
+    # )
+
+    # if super._M_i_max < super._M_i:
+    #     raise ValueError(
+    #         f"Mach number exceeded Nominally: {super._M_i} > {super._M_i_max}"
+    #     )
+
+    # super.plot_circles(50)
+
+    # # Now we get the transition co-ordinates for the lower area
+    # super.inlet_lower_transition()
+    # super.inlet_upper_transition()
+    # super.outlet_lower_transition()
+    # super.outlet_upper_transition()
+    # super.straight_line_segments()
+    # super.generate_blade(50)
+
+    # # super.plot_transition()
+
+    # # print(super._g_star)
+    # # print(super._R_l_star - super._R_u_star)
+
+    # super.plot_all_shift(50)
+
+    def generate_finite_edge(self) -> None:
+        """This function generates the finite leading and trailing edges for the turbine"""
+
+        # We need to figure out what the blade thickness is
+        self._t = self._t_g_rat * self._g_star
+
+        # We need to fogire out now what the x displacement is based on the angle
+        theta = self._le_angle + self._beta_i
+
+        if theta == np.pi / 2:
+            self._dx_edge = 0
+        elif theta > np.pi / 2:
+            raise ValueError("Leading Edge Angle leading to a protruding LE shape!")
+        else:
+            self._dx_edge = self._t / (
+                np.tan(self._beta_i + self._le_angle) - np.tan(self._beta_i)
+            )
+
+        # We can then adjust our points on the straight lines at the inlet and outlet of the turbine

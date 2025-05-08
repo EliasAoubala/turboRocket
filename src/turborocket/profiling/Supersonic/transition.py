@@ -30,10 +30,11 @@ def func_R_star(R_star, gamma):
     """
 
     f_r_star_a = ((gamma + 1) / (gamma - 1)) ** (1 / 2) * np.arcsin(
-        (gamma - 1) / R_star**2 - gamma)
-    
+        (gamma - 1) / R_star**2 - gamma
+    )
+
     f_r_star_b = np.arcsin((gamma + 1) * R_star**2 - gamma)
-    
+
     f_r_star = f_r_star_a + f_r_star_b
 
     return f_r_star
@@ -97,11 +98,11 @@ def wall_slope(phi_k_1):
 
 
 def wall_coords(x_star_l_k_1, y_star_l_k_1, y_star_k, x_star_k, m_bar_k, m_k):
-    
+
     x_star_l_k = (
         (y_star_l_k_1 - m_bar_k * x_star_l_k_1) - (y_star_k - m_k * x_star_k)
     ) / (m_k - m_bar_k)
-    
+
     y_star_l_k = (
         m_k * (y_star_l_k_1 - m_bar_k * x_star_l_k_1)
         - m_bar_k * (y_star_k - m_k * x_star_k)
@@ -183,7 +184,7 @@ def moc(k_max, v_i, v_l, gamma, alpha_l_i):
     for k in np.linspace(k_max, 1, num=k_max):
         # We evaluate our phi angle
         k = int(k)
-        
+
         phi = phi_k(v_i, v_l, k, delta_v)
 
         phi_hist = np.append(phi_hist, phi)
@@ -215,7 +216,9 @@ def moc(k_max, v_i, v_l, gamma, alpha_l_i):
         m_bar_k_hist = np.append(m_bar_k_hist, m_bar_k)
 
         # Wall Co-ordinates
-        [xlk, ylk] = wall_coords(xlk_hist[k_max - k], ylk_hist[k_max - k], yk, xk, m_bar_k, m_k)
+        [xlk, ylk] = wall_coords(
+            xlk_hist[k_max - k], ylk_hist[k_max - k], yk, xk, m_bar_k, m_k
+        )
 
         xlk_hist = np.append(xlk_hist, xlk)
         ylk_hist = np.append(ylk_hist, ylk)
@@ -232,7 +235,7 @@ def moc(k_max, v_i, v_l, gamma, alpha_l_i):
     return [xlkt_hist, ylkt_hist]
 
 
-def moc_2(k_max, v_i, v_l, gamma, alpha_l_i):
+def moc_2(k_max, v_i, v_l, gamma, alpha_l_i) -> list[np.ndarray]:
     # This function encapsulates the overall method of characteristics procedure for solving
     # for the shape of the transition arcs
 
@@ -295,7 +298,7 @@ def moc_2(k_max, v_i, v_l, gamma, alpha_l_i):
     for k in np.linspace(k_max, 1, num=k_max):
         # We evaluate our phi angle
         k = int(k)
-        
+
         phi = phi_k(v_i, v_l, k, delta_v)
 
         phi_hist = np.append(phi_hist, phi)
@@ -327,7 +330,9 @@ def moc_2(k_max, v_i, v_l, gamma, alpha_l_i):
         m_bar_k_hist = np.append(m_bar_k_hist, m_bar_k)
 
         # Wall Co-ordinates
-        [xlk, ylk] = wall_coords(xlk_hist[k_max - k], ylk_hist[k_max - k], yk, xk, m_bar_k, m_k)
+        [xlk, ylk] = wall_coords(
+            xlk_hist[k_max - k], ylk_hist[k_max - k], yk, xk, m_bar_k, m_k
+        )
 
         xlk_hist = np.append(xlk_hist, xlk)
         ylk_hist = np.append(ylk_hist, ylk)

@@ -1,12 +1,12 @@
 from turborocket.profiling.Supersonic.supersonic_profile import SupersonicProfile
-from turborocket.fluids.fluids import IdealFluid
+from turborocket.fluids.fluids import IdealGas
 import numpy as np
 
 if __name__ == "__main__":
 
     ANGLE_CONVERSION = 180 / np.pi
 
-    target_fluid = IdealFluid(P=20e5, T=816.495, R_gas=1305.355, gamma=1.3)
+    target_fluid = IdealGas(p=20e5, t=816.495, R=1305.355, gamma=1.3)
 
     super = SupersonicProfile(
         beta_i=68.34,  # Relative angles
@@ -47,13 +47,13 @@ if __name__ == "__main__":
 
     # Now we go onto get our non-dimentionalised sonic radii
 
-    super.r_star()
+    # super.r_star()
 
-    print(f"R_l_star {super._R_l_star}")
-    print(f"R_u_star {super._R_u_star}")
-    print(f"r_star {super._r_star_a}")
-    print(f"R_l {super._R_l_star*super._r_star_a} m")
-    print(f"R_u {super._R_u_star*super._r_star_a} m")
+    # print(f"R_l_star {super._R_l_star}")
+    # print(f"R_u_star {super._R_u_star}")
+    # print(f"r_star {super._r_star_a}")
+    # print(f"R_l {super._R_l_star*super._r_star_a} m")
+    # print(f"R_u {super._R_u_star*super._r_star_a} m")
 
     # We now can confirm if the turbine can be started or not
 
@@ -118,15 +118,16 @@ if __name__ == "__main__":
     super.outlet_lower_transition()
     super.outlet_upper_transition()
     super.straight_line_segments()
+    super.get_g_star()
     super.generate_blade(50)
 
     # super.plot_transition()
 
     # print(super._g_star)
     # print(super._R_l_star - super._R_u_star)
-
+    super.plot_all(50)
     super.plot_all_shift(50)
 
-    super.plot_all_shift_to_scale(50)
+    # super.plot_all_shift_to_scale(50)
 
-    super.generate_xy(50)
+    # super.generate_xy(50)
