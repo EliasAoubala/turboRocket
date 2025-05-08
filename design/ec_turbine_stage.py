@@ -113,10 +113,8 @@ if __name__ == "__main__":
     super.plot_circles(50)
 
     # Now we get the transition co-ordinates for the lower area
-    super.inlet_lower_transition()
-    super.inlet_upper_transition()
-    super.outlet_lower_transition()
-    super.outlet_upper_transition()
+    super.generate_transitions()
+
     super.straight_line_segments()
     super.get_g_star()
     super.generate_blade(50)

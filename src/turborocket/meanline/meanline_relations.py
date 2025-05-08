@@ -678,7 +678,7 @@ class TurbineStageDesign:
 
         return self._p
 
-    def solve_performance(self) -> dict:
+    def solve_performance(self, phi_n: float = 0.9) -> dict:
         """This function solves for the turbine stage performance
 
         Returns:
@@ -707,7 +707,7 @@ class TurbineStageDesign:
 
         velocities_dict["c_1s"] = self.get_isentropic_spouting()
 
-        velocities_dict["c_1"] = self.get_actual_spouting()
+        velocities_dict["c_1"] = self.get_actual_spouting(phi=phi_n)
 
         temperature_dict["t_1"] = self.get_t1()
 
