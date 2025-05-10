@@ -950,10 +950,7 @@ class Turbine:
 
         P_s = self.get_exit_pressure(P_o=P_o, M=M_sub, gamma=gamma)
 
-        if P_s < P_exit:
-            v_e = 0
-        else:
-            v_e = self.get_exit_velocity(T=T_s, gamma=gamma, R=R, M=M_sub)
+        v_e = self.get_exit_velocity(T=T_s, gamma=gamma, R=R, M=M_sub)
 
         T = self._eta * v_e * self._rm * (1 + np.cos(self._delta_b))
 
@@ -1031,7 +1028,7 @@ class Pump:
         N_nom: float,
         I: float | None = None,
         Q_max_factor: float = 1.5,
-        k_factor: float = 0.25,
+        alpha_factor: float = 10,
     ):
 
         self._D = D
@@ -1044,7 +1041,7 @@ class Pump:
         self._N_nom = N_nom
 
         self._eta_bep = eta_nom
-        self._k = k_factor
+        self._alpha = alpha_factor
 
         return
 
@@ -1085,6 +1082,18 @@ class Pump:
 
         return self._Q_max_d * (N / self._N_nom)
 
+    def get_eta_bep(self, N: float) -> float:
+        """Simpliefied Model for Identifying what the best operating efficiency of the pump is
+
+        Args:
+            N (float): Shaft Speed (Rad/s)
+
+        Returns:
+            float: Best Operating Efficiency of Pump (%)
+        """
+
+        return self._eta_bep * (N / self._N_nom)
+
     def get_eta(self, Q: float, N: float) -> float:
         """Simplified function that solves for the efficiency of the Pump
 
@@ -1095,9 +1104,17 @@ class Pump:
             float: Efficiency of the Turbine
         """
         # We need to get the best operating point
-        Q_bep = self.get_q_bep(N=N)
+        Q_bep = self.get_q_max(N=N)
+        eta_bep = self.get_eta_bep(N=N)
 
-        eta = self._eta_bep * (1 - (((Q - Q_bep) ** 2) / self._k))
+        if Q_bep == 0:
+            return 0
+
+        eta = 0.05 + (eta_bep - 0.05) * (1 - np.exp(-(Q - Q_bep) / Q_bep))
+        # if Q > Q_bep:
+        #     eta = eta_bep * np.exp(-0.05 * (Q - Q_bep) ** 2)  # Rapid drop-off past BEP
+
+        # print(eta)
 
         if eta < 0:
             eta = 0
@@ -1127,7 +1144,7 @@ class Pump:
             return 0
 
         # We can now solve for the head produced by the pump
-        H = H_o * (1 - (Q / Q_max) ** 2)
+        H = H_o * (1 - (Q / Q_max) ** 6)
 
         if H < 0:
             H = 0
@@ -1159,7 +1176,7 @@ class Pump:
         if eta < 0:
             eta = 0
 
-        dp = eta * (H * self._g * rho)
+        dp = H * self._g * rho
 
         outlet = IncompressibleFluid(rho=rho, P=p_inlet + dp)
 
@@ -1181,7 +1198,9 @@ class Pump:
 
         H = self.get_head(Q=Q, N=N)
 
-        P_shaft = m_dot * self._g * H
+        eta = self.get_eta(Q=Q, N=N)
+
+        P_shaft = m_dot * self._g * H / eta
 
         if N == 0:
             # Shaft not spinning, hence no torque
