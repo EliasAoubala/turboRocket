@@ -740,12 +740,24 @@ class SymmetricFiniteEdge(SupersonicProfile):
         # We check if we are in compliance
         if self._M_u_max < self._M_u:
             raise ValueError(
-                f"Mach number too high on upper surface: {self._M_u} > {self._M_u_max}"
+                f"Mach number too high on upper surface for flow seperation: {self._M_u} > {self._M_u_max}"
             )
 
         if self._M_l < self._M_l_min:
             raise ValueError(
-                f"Mach number too low on lower surface: {self._M_l} < {self._M_l_min}"
+                f"Mach number too low on lower surface for flow seperation: {self._M_l} < {self._M_l_min}"
+            )
+
+        # We now check if both of these are higher than the inlet conditions
+
+        if self._M_u < self._M_i:
+            raise ValueError(
+                f"Mach Number too low on upper surface and is decelerating from inlet! {self._M_u} < {self._M_i}"
+            )
+
+        if self._M_l > self._M_i:
+            raise ValueError(
+                f"Mach Number too high on lower surface and is accelerating from inlet! {self._M_l} > {self._M_i}"
             )
 
         # We then evaluate for the maximum possible Inlet Mach Number

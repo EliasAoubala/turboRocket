@@ -1,4 +1,5 @@
 import numpy as np
+from turborocket.profiling.Supersonic.circular import inv_M_star
 
 
 # We can create a generic class characterising an ideal gas
@@ -183,6 +184,36 @@ class IdealGas:
         return self._p * (
             1 - ((self._gamma - 1) / (self._gamma + 1)) * M_star**2
         ) ** (self._gamma / (self._gamma - 1))
+
+    def get_critical_pressure_ratio(self) -> float:
+        """This function solves for the critical pressure ratio for gas choking.
+
+        Returns:
+            float: Critical Pressure ratio for gas choking
+        """
+
+        p_crit = (2 / (self._gamma + 1)) ** (self._gamma / (self._gamma - 1))
+
+        return p_crit
+
+    def get_p_rat_m_star(self, M_star) -> float:
+        """This function solves for the pressure ratio based on the mach number of the gas
+
+        Args:
+            M_star (float): Critical Mach Number of the Gas
+
+        Returns:
+            float: Stagation Pressure Ratio (P/P_o)
+        """
+        M_a = inv_M_star(gamma=self._gamma, M_star=M_star)
+
+        print(f"Mach Number: {M_a}")
+
+        p_rat = (1 + ((self._gamma - 1) / 2) * M_a**2) ** (
+            self._gamma / (self._gamma - 1)
+        )
+
+        return p_rat ** (-1)
 
 
 class IncompressibleFluid:

@@ -168,23 +168,17 @@ class TurbineStageDesign:
         Returns:
             float: Nozzle Exit Stagnation Pressure
         """
+
         po = self._gas.get_pressure()
 
-        p_rat_nom = (
-            self._gas.get_expanded_p(
-                M_star=self.get_m_star(a_star=self._a_star_1, c=self._c1)
-            )
-            / po
-        )
+        m_1is = self._cis / self._a_star_1
+        m_1a = self._c1 / self._a_star_1
 
-        p_rat_act = (
-            self._gas.get_expanded_p(
-                M_star=(self.get_m_star(a_star=self._a_star_1, c=self._c1) / self._phi)
-            )
-            / po
-        )
+        p_rat_is = self._gas.get_p_rat_m_star(M_star=m_1is)
 
-        self._po_1 = self._gas.get_pressure() * (p_rat_act / p_rat_nom)
+        p_rat_a = self._gas.get_p_rat_m_star(M_star=m_1a)
+
+        self._po_1 = po * (p_rat_is / p_rat_a)
 
         return self._po_1
 
@@ -200,21 +194,29 @@ class TurbineStageDesign:
 
         return self._a1
 
-    def get_p0(self) -> float:
+    def get_p_throat(self) -> float:
         """Solves for the throat static Pressure of the Nozzle.
 
         Returns:
             float: Throat Static Pressure of the Nozzle (m^2)
         """
 
-    def get_t0(self) -> float:
-        """Solves for the throat static temperature of the Nozzle
+        self._p_throat = (
+            self._gas.get_critical_pressure_ratio() * self._gas.get_pressure()
+        )
+
+        return self._p_throat
+
+    def get_t_throat(self) -> float:
+        """This fucntion solves for the nozzle throat temperature
 
         Returns:
-            float: Throat Static Temperature of the Nozzle (K)
+            float: Static Throat Temperature
         """
 
-        self._t0 = ()
+        self._t_throat = self._gas.get_expanded_t(M_star=1)
+
+        return self._t_throat
 
     def get_A0(self) -> float:
         """Solves for the Throat Area of the Nozzle.
@@ -223,13 +225,9 @@ class TurbineStageDesign:
             float: Throat Area of the Nozzle (m^2)
         """
 
-        self._rho_0 = self._get_p0() / (self._gas.get_R() * self.get_t0())
+        self._rho_0 = self.get_p_throat() / (self._gas.get_R() * self.get_t_throat())
 
-        self._c0 = (self._gas.get_gamma() * self._gas.get_R() * self.get_t0()) ** (
-            1 / 2
-        )
-
-        self._a0 = self._m_dot / (self._rho_0 * self._c0)
+        self._a0 = self._m_dot / (self._rho_0 * self._a_star_1)
 
         return self._a0
 
@@ -714,6 +712,8 @@ class TurbineStageDesign:
         pressure_dict["p_1o"] = self.get_p1_o()
 
         geometry_dict["A_1"] = self.get_A1()
+
+        geometry_dict["A_0"] = self.get_A0()
 
         geometry_dict["s_c"] = self.get_nozzle_height(N=self._N)
 

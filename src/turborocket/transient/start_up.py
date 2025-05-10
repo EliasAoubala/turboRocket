@@ -177,10 +177,11 @@ class CombustionChamber:
         to = self._cea.get_Temperatures(Pc=pcc / 1e5, MR=mr)[0] * eta_c**2
 
         # Getting combustion gas properties
-        cp = self._cea.get_Chamber_Cp(Pc=pcc / 1e5, MR=mr)
         gamma = self._cea.get_Chamber_MolWt_gamma(Pc=pcc / 1e5, MR=mr)[1]
-
         R = 8314 / self._cea.get_Chamber_MolWt_gamma(Pc=pcc / 1e5, MR=mr)[0]
+
+        # Specific Heat Capacity is calculated based on gamma and R, as CEA will account for the solid fraction which is unrealistic for this.
+        cp = R / ((gamma - 1) / gamma)
 
         # We create our Dict and finally return it
 
@@ -474,6 +475,16 @@ class CombustionChamber:
 
         # We need to now evaluate for the system performance paramets
 
+        R = (
+            8314
+            / self._cea.get_Chamber_MolWt_gamma(
+                Pc=self._pcc_transient / 1e5, MR=MR_current
+            )[0]
+        )
+        gamma = self._cea.get_Chamber_MolWt_gamma(
+            Pc=self._pcc_transient / 1e5, MR=MR_current
+        )[1]
+
         dic = {
             "dp_dt": dp_dt,
             "P_cc": self._pcc_transient,
@@ -482,10 +493,9 @@ class CombustionChamber:
                 Pc=self._pcc_transient / 1e5, MR=MR_current, frozen=1
             )[0]
             * eta_c**2,
-            "Cp": self._cea.get_Chamber_Cp(Pc=self._pcc_transient / 1e5, MR=MR_current),
-            "gamma": self._cea.get_Chamber_MolWt_gamma(
-                Pc=self._pcc_transient / 1e5, MR=MR_current
-            )[1],
+            "Cp": R / ((gamma - 1) / gamma),
+            "gamma": gamma,
+            "R": R,
             "ox_stiffness": (ox_in.get_pressure() - self._pcc_transient)
             / self._pcc_transient,
             "fu_stiffness": (fu_in.get_pressure() - self._pcc_transient)
@@ -532,6 +542,16 @@ class CombustionChamber:
             -(self._pcc_transient * self._a_cc) / c_star
         )
 
+        R = (
+            8314
+            / self._cea.get_Chamber_MolWt_gamma(
+                Pc=self._pcc_transient / 1e5, MR=self._MR_transient
+            )[0]
+        )
+        gamma = self._cea.get_Chamber_MolWt_gamma(
+            Pc=self._pcc_transient / 1e5, MR=self._MR_transient
+        )[1]
+
         dic = {
             "dp_dt": dp_dt,
             "P_cc": self._pcc_transient,
@@ -540,12 +560,9 @@ class CombustionChamber:
                 Pc=self._pcc_transient / 1e5, MR=self._MR_transient, frozen=1
             )[0]
             * eta_c**2,
-            "Cp": self._cea.get_Chamber_Cp(
-                Pc=self._pcc_transient / 1e5, MR=self._MR_transient
-            ),
-            "gamma": self._cea.get_Chamber_MolWt_gamma(
-                Pc=self._pcc_transient / 1e5, MR=self._MR_transient
-            )[1],
+            "Cp": R / ((gamma - 1) / gamma),
+            "R": R,
+            "gamma": gamma,
             "ox_stiffness": (ox_in.get_pressure() - self._pcc_transient)
             / self._pcc_transient,
             "fu_stiffness": (fu_in.get_pressure() - self._pcc_transient)
