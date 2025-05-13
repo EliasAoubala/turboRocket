@@ -1104,20 +1104,19 @@ class Pump:
             float: Efficiency of the Turbine
         """
         # We need to get the best operating point
-        Q_bep = self.get_q_max(N=N)
+        Q_max = self.get_q_max(N=N)
         eta_bep = self.get_eta_bep(N=N)
 
-        if Q_bep == 0:
+        if Q_max == 0:
             return 0
 
-        eta = 0.05 + (eta_bep - 0.05) * (1 - np.exp(-(Q - Q_bep) / Q_bep))
-        # if Q > Q_bep:
-        #     eta = eta_bep * np.exp(-0.05 * (Q - Q_bep) ** 2)  # Rapid drop-off past BEP
+        eta = eta_bep * (Q / Q_max) ** 2
 
-        # print(eta)
+        if Q >= Q_max:
+            H = self.get_head(Q=Q, N=N)
+            H_o = self.shut_off_head(N=N)
 
-        if eta < 0:
-            eta = 0
+            eta = eta * (H / H_o)
 
         return eta
 
@@ -1143,8 +1142,17 @@ class Pump:
             H = 0
             return 0
 
-        # We can now solve for the head produced by the pump
-        H = H_o * (1 - (Q / Q_max) ** 6)
+        # We will model similar to the standard Pump Head Curves presented
+        # in the Barske paper, which is that the pump head remains relatively
+        # constant across all flow rates, but once a critical flow rate is reached it falls off.
+
+        # This will be modelled simply as the shut off head of the pump being constant, but once the critical
+        # flow rate is achieved, a parboal will be modelled
+
+        if Q <= Q_max:
+            H = H_o
+        else:
+            H = -100 * ((Q / Q_max) ** 2 - 1) ** 2 + H_o
 
         if H < 0:
             H = 0
