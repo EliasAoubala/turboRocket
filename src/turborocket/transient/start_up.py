@@ -782,12 +782,7 @@ class Turbine:
     """Object That Defines the Turbine Transient Performance"""
 
     def __init__(
-        self,
-        delta_b: float,
-        a_rat: float,
-        D_m: float,
-        eta: float,
-        I: float | None = None,
+        self, delta_b: float, a_rat: float, D_m: float, eta_nom: float, u_co_nom: float
     ):
         """Constructor for the Transient Turbine Object
 
@@ -799,13 +794,35 @@ class Turbine:
             eta (float): Turbine Efficiency
         """
 
-        self._I = I
         self._delta_b = (delta_b / 180) * np.pi
         self._a_rat = a_rat
         self._rm = D_m / 2
-        self._eta = eta
+        self._eta_nom = eta_nom
+        self._u_co_nom = u_co_nom
 
         return
+
+    def get_efficiency(self, u_m: float, c_o: float) -> float:
+        """This function gets the efficiency of the turbine stage at off-design performance
+
+        Args:
+            u_m (float): Mean Line Velocity (m/s)
+            c_o (float): Isentropic Expansion Velocity (m/s)
+
+        Returns:
+            float: Total to static efficiency of the turbine (%)
+        """
+
+        u_co_a = u_m / c_o
+
+        if u_co_a > self._u_co_nom:
+
+            eta = self._eta_nom
+        else:
+
+            eta = self._eta_nom * u_co_a / self._u_co_nom
+
+        return eta
 
     def area_error(self, M: float, gamma: float):
         """Error Function for the Nozzle Expansion Ratio Relationship
@@ -928,16 +945,17 @@ class Turbine:
         return p_rat
 
     def torque_subsonic(
-        self, T_o: float, P_o: float, gamma: float, R: float, P_exit: float
+        self, T_o: float, P_o: float, gamma: float, R: float, P_exit: float, N: float
     ) -> float:
         """Gets the specific torque for a subsonic solution
 
         Args:
-            T_o (float): _description_
-            P_o (float): _description_
-            gamma (float): _description_
-            R (float): _description_
-            P_exit (float): _description_
+            T_o (float): Turbine Inlet Temperature (K)
+            P_o (float): Turbine Inlet Pressure (Pa)
+            gamma (float): Specific Heat Ratio
+            R (float): Specific Gas Constant (J /kg K)
+            P_exit (float): Exit Pressure of the Turbine (Pa)
+            N (float): Shaft Speed of the pump (rad/s)
 
         Returns:
             float: Specific Torque produced by turbine (N m s / kg)
@@ -951,6 +969,8 @@ class Turbine:
         P_s = self.get_exit_pressure(P_o=P_o, M=M_sub, gamma=gamma)
 
         v_e = self.get_exit_velocity(T=T_s, gamma=gamma, R=R, M=M_sub)
+
+        u = self._rm * N
 
         T = self._eta * v_e * self._rm * (1 + np.cos(self._delta_b))
 
