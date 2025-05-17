@@ -810,7 +810,7 @@ class SymmetricFiniteEdge(SupersonicProfile):
             )
 
         # We can now solve for the chord length based on the number of blades we intend to have
-        self._t = D_m / self._N
+        self._t = np.pi * D_m / self._N
 
         # From this, we can figure out what the blade chord should be
 
