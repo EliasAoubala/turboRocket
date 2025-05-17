@@ -1,4 +1,5 @@
 import numpy as np
+from turborocket.profiling.Supersonic.circular import inv_M_star
 
 
 # We can create a generic class characterising an ideal gas
@@ -9,9 +10,9 @@ class IdealGas:
         self,
         p: float,
         t: float,
-        R: float,
         gamma: float,
-        cp: float,
+        R: float | None = None,
+        cp: float | None = None,
     ) -> None:
         """Constructor for an Ideal Gas Object
 
@@ -184,24 +185,63 @@ class IdealGas:
             1 - ((self._gamma - 1) / (self._gamma + 1)) * M_star**2
         ) ** (self._gamma / (self._gamma - 1))
 
+    def get_critical_pressure_ratio(self) -> float:
+        """This function solves for the critical pressure ratio for gas choking.
+
+        Returns:
+            float: Critical Pressure ratio for gas choking
+        """
+
+        p_crit = (2 / (self._gamma + 1)) ** (self._gamma / (self._gamma - 1))
+
+        return p_crit
+
+    def get_p_rat_m_star(self, M_star) -> float:
+        """This function solves for the pressure ratio based on the mach number of the gas
+
+        Args:
+            M_star (float): Critical Mach Number of the Gas
+
+        Returns:
+            float: Stagation Pressure Ratio (P/P_o)
+        """
+        M_a = inv_M_star(gamma=self._gamma, M_star=M_star)
+
+        print(f"Mach Number: {M_a}")
+
+        p_rat = (1 + ((self._gamma - 1) / 2) * M_a**2) ** (
+            self._gamma / (self._gamma - 1)
+        )
+
+        return p_rat ** (-1)
+
 
 class IncompressibleFluid:
     """Generic Function Defining the Properties of an Incompressible Fluid"""
 
     def __init__(
-        self, rho: float, P: float, T: float | None = None, mue: float | None = None
+        self,
+        rho: float,
+        P: float,
+        T: float | None = None,
+        mue: float | None = None,
+        B: float | None = None,
     ) -> None:
         """Constructor for the Incompressible Fluid
 
         Args:
-            rho (float): _description_
-            mue (float | None, optional): _description_. Defaults to None.
+            rho (float): Fluid Density (kg/m^3)
+            P (float): Fluid Pressure (kg/m^3)
+            T (float): Fluid Temperature (kg/m^3)
+            mue (float | None, optional): Fluid Viscosity (Pa s). Defaults to None.
+            B (float | None, optional): Fluid Bulk Modulus (Pa). Defaults to None.
         """
 
         self._rho = rho
         self._P = P
         self._T = T
         self._mue = mue
+        self._B = B
 
         return
 
@@ -214,6 +254,17 @@ class IncompressibleFluid:
 
         return self._rho
 
+    def set_density(self, rho: float) -> None:
+        """Setter Function for fluid density
+
+        Args:
+            rho (float): Fluid Density (kg/m^3)
+        """
+
+        self._rho = rho
+
+        return
+
     def get_pressure(self) -> float:
         """Getter function for fluid pressure
 
@@ -222,6 +273,17 @@ class IncompressibleFluid:
         """
 
         return self._P
+
+    def set_pressure(self, P: float) -> None:
+        """Setter Function for fluid Pressure
+
+        Args:
+            P (float): Fluid Pressure (Pa)
+        """
+
+        self._P = P
+
+        return
 
     def get_temperature(self) -> float:
         """Getter function for fluid temperature
@@ -239,3 +301,12 @@ class IncompressibleFluid:
             float: Fluid viscosity (Pa s)
         """
         return self._mue
+
+    def get_bulk_modululs(self) -> float:
+        """Getter function for the fluid's Bulk Modulus
+
+        Returns:
+            float: Fluid Bulk Modulus (Pa)
+        """
+
+        return self._B

@@ -1,0 +1,26 @@
+phases:
+- name: O2(L)
+  thermo: ideal-gas
+  elements: [O]
+  species: [O2(L)]
+- name: RP-1
+  thermo: ideal-gas
+  elements: [C, H]
+  species: [RP-1]
+species:
+- name: O2(L)
+  composition: {O: 2}
+  thermo:
+    model: constant-cp
+    T0: 90.170
+    h0: -12979.0 J/mol
+    s0: 0.0
+    cp0: 0.0
+- name: RP-1
+  composition: {C: 1, H: 1.95}
+  thermo:
+    model: constant-cp
+    T0: 298.150
+    h0: -24717.700 J/mol
+    s0: 0.0
+    cp0: 0.0
