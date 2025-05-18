@@ -275,6 +275,31 @@ class CombustionChamber:
 
         return error
 
+    def set_stochastic_parameters(
+        self,
+        Cd_o: float | None = None,
+        Cd_f: float | None = None,
+        eta_c: float | None = None,
+    ) -> None:
+        """This function sets all the key stochasting parameters that are relevant for this component.
+
+        Args:
+            Cd_o (float | None, optional): Oxidiser Injector Discharge Coefficient. Defaults to None.
+            Cd_f (float | None, optional): Fuel Injector Discharge Coefficient. Defaults to None.
+            eta_c (float | None, optional): Combustion Efficiency of the Engine. Defaults to None.
+        """
+
+        if Cd_o is not None:
+            self._cdo = Cd_o
+
+        if Cd_f is not None:
+            self._cdf = Cd_f
+
+        if eta_c is not None:
+            self._eta_c = eta_c
+
+        return
+
     def solve_perturb_ss(
         self,
         ox_in: IncompressibleFluid,
@@ -296,6 +321,10 @@ class CombustionChamber:
 
         # We evaluate for our K_f term
         self._kf = self._cdf * self._a_fu * np.sqrt(2 * self._rho_fu) / self._a_cc
+
+        self._ko = self._cdo * self._a_ox * np.sqrt(2 * self._rho_ox) / self._a_cc
+
+        self._alpha = self._ko / self._kf
 
         # We can estimate the intial chamber pressure as 2/3 of the lower pressure
         p_ox = ox_in.get_pressure()
@@ -1047,147 +1076,183 @@ class Pump:
 
     def __init__(
         self,
-        D: float,
-        Q_nom: float,
-        eta_nom: float,
-        N_nom: float,
-        Q_max_factor: float = 1.5,
-        alpha_factor: float = 10,
+        D_1: float,
+        D_2: float,
+        D_3: float,
+        L_1: float,
+        alpha_1: float,
+        alpha_2: float,
     ):
         """_summary_
 
         Args:
-            D (float): Outer Diameter of Pump
-            Q_nom (float): Nominal Volumetric Flow Rate of the Pump (m^3/s)
-            eta_nom (float): Nominal Efficiency of the Pump (%)
-            N_nom (float): Nominal Rotational Rate of the Pump (rad/s)
-            Q_max_factor (float, optional): _description_. Defaults to 1.5.
-            alpha_factor (float, optional): _description_. Defaults to 10.
+            D_1 (float): Inner Diameter of Pump Eye (m)
+            D_2 (float): Outer Diameter of the Pump Tip (m)
+            D_3 (float): Diffuser Oulet Diameter (m)
+            L_1 (float): Length of the Blade (m)
+            alpha_1 (float): Blade Angle at Tip (Degrees)
+            alpha_2 (float): Blade Angle at Base (Degrees)
         """
 
-        self._D = D
+        self._D_1 = D_1
+        self._D_2 = D_2
+        self._D_3 = D_3
+        self._L_1 = L_1
+
+        self._alpha_1 = alpha_1 * np.pi / 180
+        self._alpha_2 = alpha_2 * np.pi / 180
 
         self._g = 9.18
-
-        self._Q_bep_d = Q_nom
-        self._Q_max_d = Q_nom * Q_max_factor
-        self._N_nom = N_nom
-
-        self._eta_bep = eta_nom
-        self._alpha = alpha_factor
+        self._METER_TO_INCH = 39.3701
+        self._KG_M3_TO_LB_CUFT = 0.062428
+        self._M2_S_TO_FT2_S = 10.7639
+        self._HP_TO_WATT = 745.7
 
         return
 
-    def shut_off_head(self, N: float) -> float:
-        """This function estimates the the theoretical shut off head of a pump
+    def set_performance(self, C_c: float, psi: float, K_f: float) -> None:
+        """This Function Sets the Pump Performance
 
         Args:
-            N (float): Rotational Rate for the Pump (rad/s)
+            C_c (float): Diffuser Vena-Contra Factor (%)
+            psi (float): Pressure Coefficient of Turbine (%)
+            K_f (float): Frictional Loss Factor (%)
         """
+        self._C_c = C_c
+        self._psi = psi
+        self._K_f = K_f
 
-        u_o = self._D * N / 2
+        return
 
-        H_o = (u_o**2) / (2 * self._g)
-
-        return H_o
-
-    def get_q_bep(self, N: float) -> float:
-        """This function get sthe best operation point for the turbine at the selected shaft speed
+    def get_frictional_loss(self, N: float, fluid: IncompressibleFluid) -> float:
+        """This function gets the frictional loss of the pump
 
         Args:
-            N (_type_): Shaft Speed (Rad/s)
+            N (float): Pump Shaft Speed (rad/s).
 
         Returns:
-            float: Best Operating Point Flow Rate (m^3/s)
+            float: Frictional Power Loss (W)
         """
 
-        return self._Q_bep_d * (N / self._N_nom)
+        N = N * (60 / (2 * np.pi))
 
-    def get_q_max(self, N: float) -> float:
-        """This function gets the maximum flow operating point for the turbine at the selected shaft speed
+        rho = fluid.get_density() * self._KG_M3_TO_LB_CUFT
+        v = (fluid.get_viscosity() / rho) * self._M2_S_TO_FT2_S
+
+        d1 = self._D_1 * self._METER_TO_INCH
+        d2 = self._D_2 * self._METER_TO_INCH
+        l1 = self._L_1 * self._METER_TO_INCH
+
+        P_hp = (
+            0.60e-6
+            * rho
+            * (v**0.2)
+            * (N / 1000) ** 2.8
+            * (
+                d2**4.6 * ((1 / np.sin(self._alpha_1)) + (1 / np.sin(self._alpha_2)))
+                + 9.2 * d1**3.6 * l1
+            )
+        )
+
+        return P_hp * self._HP_TO_WATT
+
+    def q_max(self, N: float) -> float:
+        """This function gets the maximum volumetric flow rate for the pump
 
         Args:
-            N (float): Shaft Speed (Rad/s)
+            N (float): Shaft Speed (rad/s)
 
         Returns:
-            float: Maximum Flow Operating Point (m^3/s)
+            float: Maximum Volumetric Flow Rate (m^3 / s)
         """
 
-        return self._Q_max_d * (N / self._N_nom)
+        # We firstly need to solve for our theoretical exit velocity
+        u_2 = np.pi * (self._D_2 / 2) ** 2
+        u_1 = np.pi * (self._D_1 / 2) ** 2
 
-    def get_eta_bep(self, N: float) -> float:
-        """Simpliefied Model for Identifying what the best operating efficiency of the pump is
+        v_3 = ((1 + self._psi) * u_2**2 - u_1**2) ** (1 / 2)
 
-        Args:
-            N (float): Shaft Speed (Rad/s)
+        # We can thus evaluate for the maximum flow rate of the system
+        a_3 = np.pi * (self._D_3 / 2) ** 2
+        q_max = v_3 * a_3 * self._C_c
 
-        Returns:
-            float: Best Operating Efficiency of Pump (%)
-        """
+        return q_max
 
-        return self._eta_bep * (N / self._N_nom)
-
-    def get_eta(self, Q: float, N: float) -> float:
+    def get_eta(self, Q: float, N: float, fluid: IncompressibleFluid) -> float:
         """Simplified function that solves for the efficiency of the Pump
 
         Args:
             Q (float): Flow Rate of Fluid Through the Pump (m^3/s)
+            N (float): Shaft Speed (rad/s)
+            fluid (Incompressible Fluid): Fluid Object Flowing Through Pump
 
         Returns:
             float: Efficiency of the Turbine
         """
-        # We need to get the best operating point
-        Q_max = self.get_q_max(N=N)
-        eta_bep = self.get_eta_bep(N=N)
+        # For evaluating what the efficiency of the system is, we need to evaluate for:
+        # - The Frictional Power Loss
+        # - The Theoretical Head
+        # - The Actual Head
+        rho = fluid.get_density()
 
-        if Q_max == 0:
-            return 0
+        P_f = self.get_frictional_loss(N=N, fluid=fluid)
 
-        eta = eta_bep * (Q / Q_max) ** 2
+        P_a = self.get_head(Q=Q, N=N) * self._g * rho * Q
 
-        if Q >= Q_max:
-            H = self.get_head(Q=Q, N=N)
-            H_o = self.shut_off_head(N=N)
+        P_t = self.get_head_theoretical(Q=Q, N=N) * self._g * rho * Q
 
-            eta = eta * (H / H_o)
-
-        if eta <= 0:
-            eta = 0.00001
+        eta = P_a / (P_f + P_t)
 
         return eta
 
-    def get_head(self, Q, N) -> float:
+    def get_head_theoretical(self, Q: float, N: float) -> float:
+        """
+
+        Args:
+            Q (float): Volumetric Flow Rate (m^3 /s)
+            N (float): Shaft Speed (rad / s)
+
+        Returns:
+            float: Theoretical Head Produced by Pump
+        """
+        u_1 = self._D_1 * N / 2
+        u_2 = self._D_2 * N / 2
+
+        H_o = (1 / 2 * self._g) * (2 * u_2**2 - u_1**2)
+
+        return H_o
+
+    def get_head(self, Q: float, N: float) -> float:
         """This function solves for the head produced by the pump
 
         Args:
-            Q (_type_): Volumetric Flow Rate Through the Pump (m^3 /s)
-            N (_type_): Rotational Rate for the Pump (Rad/s)
+            Q (float): Volumetric Flow Rate Through the Pump (m^3 /s)
+            N (float): Rotational Rate for the Pump (rad/s)
 
         Returns:
             float: Head Produced by Pump (m)
         """
 
-        # We firstly need to solve for the shut_off head of the pump
-        H_o = self.shut_off_head(N=N)
+        # We firstly need to solve for the normal head of the pump
+        u_1 = self._D_1 * N / 2
+        u_2 = self._D_2 * N / 2
 
-        # We need to get the maximum flow operating point
-        Q_max = self.get_q_max(N=N)
+        a_3 = np.pi * (self._D_3 / 2) ** 2
 
-        if Q_max == 0:
-            # Pump is not spinning at all, hence no head.
-            H = 0
-            return 0
+        v_4 = Q / (a_3)
 
-        # We will model similar to the standard Pump Head Curves presented
-        # in the Barske paper, which is that the pump head remains relatively
-        # constant across all flow rates, but once a critical flow rate is reached it falls off.
+        H_o = (1 / 2 * self._g) * (
+            (1 + self._psi) * u_2**2 - u_1**2 + (1 - self._psi) * v_4**2
+        )
 
-        # This will be modelled simply as the shut off head of the pump being constant, but once the critical
-        # flow rate is achieved, a parboal will be modelled
+        # We now need to evaluate for the maximum flow rate of the pump
+        Q_max = self.q_max(N=N)
 
         if Q <= Q_max:
+            # We are not choked, hence head is kept constant
             H = H_o
         else:
+            # We begin reaching a choking state, so head is exponentially dropped.
             H = -100 * ((Q / Q_max) ** 2 - 1) ** 2 + H_o
 
         if H < 0:
@@ -1214,9 +1279,6 @@ class Pump:
 
         H = self.get_head(Q=Q, N=N)
 
-        # We get the pump efficiency
-        eta = self.get_eta(Q=Q, N=N)
-
         dp = H * self._g * rho
 
         outlet = IncompressibleFluid(rho=rho, P=p_inlet + dp)
@@ -1239,9 +1301,9 @@ class Pump:
 
         H = self.get_head(Q=Q, N=N)
 
-        eta = self.get_eta(Q=Q, N=N)
+        eta = self.get_eta(Q=Q, N=N, fluid=inlet)
 
-        P_shaft = m_dot * self._g * H / eta
+        P_shaft = H * rho * self._g * Q / eta
 
         if N == 0:
             # Shaft not spinning, hence no torque
