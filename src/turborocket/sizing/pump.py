@@ -1,160 +1,125 @@
 """This file contains the authors objects for the sizing of liquid propellant pumps"""
 
-from turborocket.fluids.fluids import IncompressibleFluid
+#from turborocket.fluids.fluids import IncompressibleFluid
 import numpy as np
+import matplotlib.pyplot as plt
 
 
 class Barske:
-    """This object represents a Partial Emission Pump of a Barske Style for Liquid Propellants"""
+    #This object represents a Partial Emission Pump of a Barske Style for Liquid Propellants
 
-    def __init__(self, fluid: IncompressibleFluid, dp: float, m_dot: float, N: float):
-        """Constructor for the Pump Object
+    def __init__(self, dp_metric: float, M_metric: float, N: float, W_metric: float, v_metric: float, alpha: float):
 
-        Args:
-            fluid (IncompressibleFluid): Working Fluid of the Pump
-            dp (float): Desired Pressure Rise Across the Pump (Pa)
-            m_dot (float): Mass Flow Rate through the Pump (kg/s)
-            N (float): Pump Nominal Shaft Speed (rpm)
-        """
+        "Converted values"
+        self.H_prime = 3.28084 * ((dp_metric*100000)/(W_metric*9.81)) #ft
+        self.M = M_metric * 2.20462 # lbs/s
+        self.W = W_metric * 0.062428 # lbs/ft3
+        self.Q = self.M/self.W # ft3/s
+        self.G = self.Q * 448.8309375 # GPM
+        self.v = v_metric * 10.764 # ft2/s
+        self.alpha = alpha
+        self.N = N # rpm
+        #self.N_s = (self.N * (self.G) ** 0.5)/(); " rpm, GPM, ft"
 
-        self._fluid = fluid
-        self._dp = dp
-        self._m_dot = m_dot
-        self._N = N
+        self.size_pump()
 
-        self._METER_TO_INCH = 39.3701
-        self._KG_M3_TO_LB_CUFT = 0.062428
-        self._M2_S_TO_FT2_S = 10.7639
+    def size_pump(self): #Generates geometric parameters for the pump
+        
+        #Inlet Conditions
+        self.v_0 = 12 #ft/s, range of 5 - 12
+        self.d_0 = (183.5 * (self.Q/self.v_0)) ** 0.5 # inch
+        self.d_1 = self.d_0 # inch
 
-        return
+        #Velocities and Ideal Heads
+        self.u_1 = self.N * self.d_1 * 0.00435 #ft/s
+        self.u_2 = (((self.H_prime*2*32.2) + (self.u_1 ** 2))/2) ** 0.5 #ft/s
 
-    def size_pump(self) -> None:
-        """This function sizes the pump"""
+        self.H_prime_d = (self.u_2**2)/(2*32.2) # ft
+        self.H_prime_s = (self.u_2 ** 2 - self.u_1 ** 2)/(2*32.2) # ft
 
-    def get_frictional_loss(self, N: float | None = None) -> float:
-        """This function gets the frictional loss of the pump
+        #Ideal pressures
+        self.p_prime_s = self.W*(self.u_2**2 - self.u_1**2)/9300 # psi
+        self.p_prime_d = (self.W*self.u_2**2)/9300 # psi
+        self.p_prime = self.p_prime_s + self.p_prime_d # psi
 
-        Args:
-            N (float): Pump Shaft Speed (RPM). Defaults to Design Shaft Speed
+        #Blade geometry
+        self.d_2 = self.u_2/(0.00435*self.N)
+        self.l_1 = self.d_1*0.25
+        self.l_2 = self.l_1*(self.d_1/self.d_2)
 
-        Returns:
-            float: Frictional Power Loss (W)
-        """
+        #Diffuser geometry
+        self.v_3 = 0.85 * self.u_2 # ft/s
+        self.a_3 = (144*self.M)/(1*self.v_3*self.W) # in^2
+        self.a_4 = self.a_3 * 3.5 # in^2
+        self.d_3 = ((4/np.pi)*self.a_3) ** 0.5 # inch
+        self.d_4 = ((4/np.pi)*self.a_4) ** 0.5 # inch
+        self.delta = 10 # degree
+        self.l_3 =(self.d_4-self.d_3)/np.tan(np.deg2rad(self.delta)) # inch
+        self.v_4 = (self.Q*144)/self.a_4 # ft/s
 
-        if N is None:
-            N = self._N
+    def get_pump_performance(self, psi: float):
+        self.psi = psi
+        self.H = self.H_prime_s + (self.psi * self.H_prime_d)
+        self.p = self.p_prime_s + (self.psi * self.p_prime_d)
 
-        rho = self._fluid.get_density() * self._KG_M3_TO_LB_CUFT
-        v = (self._fluid.get_viscosity() / rho) * self._M2_S_TO_FT2_S
+        self.H_metric = self.H * 0.3048 # m
+        self.p_metric = self.p * 0.0689476  # bar
 
-        d1 = self._d1 * self._METER_TO_INCH
-        d2 = self._d2 * self._METER_TO_INCH
-        l1 = self._l1 * self._METER_TO_INCH
+        self.specific_speed = (self.N*(self.G)**0.5)/(self.H**0.75)
 
-        P_hp = (
-            0.60e-6
-            * rho
-            * (v**0.2)
-            * (N / 1000) ** 2.8
-            * (
-                d2**4.6 * ((1 / np.sin(self._alpha_1)) + (1 / np.sin(self._alpha_2)))
-                + 9.2 * d1**3.6 * l1
-            )
-        )
+        return self.H_metric, self.p_metric
 
-        return P_hp * 745.7
 
-    def get_pressure_rise(
-        self, psi: float | None = None, N: float | None = None
-    ) -> float:
-        """This function solves for the pressure rise across the pump
+    def get_instantaneous_efficiency(self):
+        self.P_prime = (self.H_prime * self.M)/550
+        self.P = (self.H * self.M)/550
+        self.P_F = 0.6e-6 * (self.W) * (self.v**0.2) * ((self.N/1000)**2.8) * (((2 * (1/np.sin(np.deg2rad(self.alpha)))) * self.d_2**4.6) + (self.l_1 * 9.2 * self.d_1 ** 3.6))
+        self.eta = 1/((self.p_prime/self.p) + (self.P_F/self.P))
 
-        Args:
-            psi (float | None): Pressure Coefficient (n.d). Defaults to Design Pressure Coefficient
-            N (float | None): Shaft Speed of the Pump (rpm). Defaults to Design Shaft Speed.
+    def get_sweep_efficiency(self, N_start: float, N_end: float, generate_graph: bool):
+        #pump performance must be run first
+        rpm_step = 1000
+        rpm_values = np.arange(N_start, N_end + rpm_step, rpm_step)
+        
+        sweep_u_1 = []
+        sweep_u_2 = []
+        sweep_p = []
+        sweep_p_prime = []
+        sweep_P_F = []
+        sweep_H = []
+        sweep_Q = []
+        sweep_P = []
+        sweep_eta = []
 
-        Returns:
-            float: Pressure Rise Across Pump (Pa)
-        """
-        # We need to solve for the blade speeds at the tips
+        for rpm in rpm_values:
+            new_u_1 = 0.00435 * self.d_1 * rpm; sweep_u_1.append(new_u_1)
+            new_u_2 = 0.00435 * self.d_2 * rpm; sweep_u_2.append(new_u_2)
+            new_p = (self.W/9300) * ((1 + self.psi) * new_u_2 ** 2 - new_u_1 ** 2); sweep_p.append(new_p)
+            new_p_prime = (self.W / 9300) * ((2 * new_u_2 ** 2) - new_u_1 ** 2); sweep_p_prime.append(new_p_prime)
+            new_P_F = 0.6e-6 * (self.W) * (self.v**0.2) * ((rpm/1000)**2.8) * (((2 * (1/np.sin(np.deg2rad(self.alpha)))) * self.d_2**4.6) + (self.l_1 * 9.2 * self.d_1 ** 3.6))
+            sweep_P_F.append(new_P_F)
+            new_H = (144*new_p)/self.W; sweep_H.append(new_H)
+            new_Q = (((self.specific_speed*new_H**0.75)/rpm)**2) * 0.002228010407594; sweep_Q.append(new_Q)
+            new_P = 0.262 * new_p * new_Q; sweep_P.append(new_P)
+            new_eta = 1/((new_p_prime/new_p) + (new_P_F/new_P)); sweep_eta.append(new_eta)
 
-        if N is None:
-            N = self._N
-        if psi is None:
-            psi = self._psi
 
-        u_2 = N * np.pi * (self._d2) / 60
+        if generate_graph:
+            plt.figure(figsize=(8, 5))
+            plt.plot(rpm_values, sweep_eta, marker='o', linestyle='-', color='blue', label='Pump Efficiency')
+            plt.xlabel('RPM')
+            plt.ylabel('Efficiency (%)')
+            plt.title('Pump Efficiency vs RPM')
+            plt.grid(True)
+            plt.legend()
+            plt.tight_layout()
+            plt.show()
 
-        u_1 = N * np.pi * (self._d1) / 60
+        #return rpm_values, sweep_eta
+        return sweep_eta
 
-        rho = self._fluid.get_density()
 
-        dp = rho * (1 / 2) * ((1 + psi) * u_2**2 - u_1**2)
-
-        return dp
-
-    def get_hydraulic_power(
-        self, psi: float | None, N: float | None = None, m_dot: float | None = None
-    ) -> float:
-        """This function solve for the hydraulic power produced by the pump
-
-        Args:
-            psi (float): Pressure Coefficient (n.d). Defaults to design Pressure Coefficient.
-            N (float): Pump Shaft Speed (rpm). Defaults to Design Shaft Speed.
-            m_dot (float): Mass Flow Rate Through the Pump (kg/s). Defaults to design Mass Flow Rate.
-
-        Returns:
-            float: Hydraulic Power of the Pump (W)
-        """
-
-        if m_dot is None:
-            m_dot = self._m_dot
-
-        q = m_dot / self._fluid.get_density()
-
-        dp = self.get_pressure_rise(psi=psi, N=N)
-
-        P = q * dp
-
-        return P
-
-    def get_efficiency(
-        self,
-        psi: float | None = None,
-        N: float | None = None,
-        m_dot: float | None = None,
-    ) -> float:
-        """This function solves for the hydraulic efficiency of the pump
-
-        Args:
-            N (float | None): Shaft Speed of the Pump (rpm). Defaults to Design Shaft Speed.
-            m_dot (float | None): Mass Flow Rate Through the Pump (kg/s). Defaults to Design Mass Flow Rate.
-            psi (float | None, optional): _description_. Defaults to None. Defaults to Design Pressure Coefficient
-
-        Returns:
-            float: System Efficiency (x/100)
-        """
-
-        if psi is None:
-            psi = self._psi
-
-        if N is None:
-            N = None
-
-        if m_dot is None:
-            m_dot = self._m_dot
-
-        # Firstly we get the hypothetical power
-        P_s = self.get_hydraulic_power(psi=1, N=N, m_dot=m_dot)
-
-        # Then we get the actual hydraulic power
-        P_a = self.get_hydraulic_power(psi=psi, N=N, m_dot=m_dot)
-
-        # Then we get the frictional power loss
-        P_f = self.get_frictional_loss(N=N)
-
-        # We can then calculate our total efficiency
-
-        eta = P_a / (P_f + P_s)
-
-        return eta
+#EXAMPLE CODE
+pump = Barske(35, 0.25, 24000, 786, 1.462e-6, 80) #initialise pump model
+pump.get_pump_performance(0.2) #generate performance figures for given psi value
+pump_efficiency = pump.get_sweep_efficiency(1000, 50000, True) #generate efficiency plot for given psi value
