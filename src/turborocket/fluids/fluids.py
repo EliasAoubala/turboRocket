@@ -233,6 +233,17 @@ class IdealGas:
 
         return c_star
 
+    def set_pressure(self, p: float) -> None:
+        """This function sets the pressure of the ideal gas object
+
+        Args:
+            p (float): Pressure of the Gas (Pa)
+
+        """
+        self._p = p
+
+        return
+
 
 class IncompressibleFluid:
     """Generic Function Defining the Properties of an Incompressible Fluid"""

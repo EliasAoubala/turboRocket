@@ -104,8 +104,8 @@ class CombustionCantera:
         self,
         P_max: float = 60e5,
         P_min: float = 10e5,
-        MR_max: float = 4,
-        MR_min: float = 0.3,
+        MR_max: float = 6,
+        MR_min: float = 0.1,
         N: float = 50,
     ) -> None:
         """This function generates a set of lookup interpolation functions for combustion properties
@@ -255,6 +255,7 @@ class CombustionCantera:
 
         if self._look_up:
             # We perform a regression of all our points
+
             cp = interpn((self._P_array, self._MR_array), self._CP_array, [Pcc, MR])
             gamma = cp / interpn(
                 (self._P_array, self._MR_array), self._CV_array, [Pcc, MR]

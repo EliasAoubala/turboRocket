@@ -2,7 +2,13 @@
 This file contains the classes used for the generation of the Turbopump Cycle Characteristics
 """
 
-from turborocket.transient.start_up import GasGenerator, Pump, Turbine, LiquidValve
+from turborocket.transient.start_up import (
+    GasGenerator,
+    Pump,
+    Turbine,
+    LiquidValve,
+    MechanicalLosses,
+)
 from turborocket.fluids.fluids import IncompressibleFluid, IdealGas
 from turborocket.solvers.solver import adjoint
 
@@ -24,6 +30,7 @@ class TurboCharacteristics:
         turbine: Turbine,
         gas_generator: GasGenerator,
         valve: LiquidValve | None = None,
+        loss: MechanicalLosses | None = None,
     ) -> None:
         """Constructor for the Turbopump Cycle Object
 
@@ -31,6 +38,8 @@ class TurboCharacteristics:
             pump (Pump): Pump Object of the Turbopump
             turbine (Turbine): Turbine Object of the Turbopump
             gas_generator (GasGenerator): Gas Generator Object of the Turbopump
+            valve (Liquid Valve | None, optional): Valve Object for throttling the gas generator flow. Defaults to None.
+            loss (MechanicalLosses | None, optional): Mechanical Loss Object for Power Transmisition. Defaults to None.
 
         Optional:
             valve (LiquidValve): Throttling valve between pump outlet and gas generator Inlet
@@ -40,6 +49,7 @@ class TurboCharacteristics:
         self._turbine = turbine
         self._gg = gas_generator
         self._valve = valve
+        self._loss = loss
 
         return
 
@@ -135,7 +145,6 @@ class TurboCharacteristics:
         Returns:
             float: Error in Torques produced by the system
         """
-
         # First thing, we need to evaluate for is what the quantity of the torque and dp
         # that is produced by the pump
 
@@ -158,8 +167,14 @@ class TurboCharacteristics:
             combustion_gas=gg_dic["gas_obj"], P_exit=p_exit, N=N
         )
 
+        if self._loss is not None:
+            T_bearing = self._loss.get_torque()
+
+        else:
+            T_bearing = 0
+
         # We can now solve for the error in torques
-        error = T_turbine - T_pump
+        error = T_turbine - T_pump - T_bearing
 
         return error
 
@@ -244,7 +259,7 @@ class TurboCharacteristics:
         N = adjoint(
             func=self.get_torque_error,
             x_guess=self._pump._N_nom,
-            dx=1,
+            dx=100,
             n=500,
             relax=0.5,
             target=0,
