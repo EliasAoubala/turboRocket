@@ -1,9 +1,9 @@
 """This file contains the relations and objects as it relates to the evaluation of transient start-ups of turbopumps"""
 
-from turborocket.fluids.fluids import IncompressibleFluid
+from turborocket.fluids.fluids import IncompressibleFluid, IdealGas
 from turborocket.solvers.solver import adjoint
 import numpy as np
-from rocketcea.cea_obj_w_units import CEA_Obj
+from turborocket.combustion.comb_solver import CombustionCantera
 
 
 class CombustionChamber:
@@ -11,7 +11,13 @@ class CombustionChamber:
     Object Defining Combustion Chamber characteristics and behaviours
     """
 
-    def __init__(self, Ox: str, Fu: str, Pcc: float, MR: float) -> None:
+    def __init__(
+        self,
+        Ox: str,
+        Fu: str,
+        Pcc: float,
+        MR: float,
+    ) -> None:
         """Constructor for the Combustion Chamber Object
 
         Args:
@@ -19,14 +25,14 @@ class CombustionChamber:
             Fu (str): Name of the Fule Used for the Combustion Chamber
             Pcc (float): Chamber Pressure of the Combustion Chamber [Pa]
             MR (float): Propellant Mixture Ratio
+            look_up (bool, optional): Look Up Flag for Cantera (Defaults to False)
+            look_up_file (str | None, optional): Look Up File Directory (Defaults to None)
         """
 
         self._ox_name = Ox
         self._fu_name = Fu
         self._pcc = Pcc
         self._mr = MR
-
-        self.cea_object()
 
         return
 
@@ -74,16 +80,26 @@ class CombustionChamber:
 
         return
 
-    def cea_object(self) -> None:
-        """This function defines the cea object used for combustion modelling"""
+    def comb_object(
+        self,
+        look_up: bool = False,
+        look_up_file: str | None = None,
+        combustion_file: str | None = None,
+    ) -> None:
+        """This function sets up the combustion object used for the comuting of combustion conditions
 
-        self._cea = CEA_Obj(
-            oxName=self._ox_name,
-            fuelName=self._fu_name,
-            pressure_units="Bar",
-            temperature_units="K",
-            density_units="kg/m^3",
-            specific_heat_units="J/kg-K",
+        Args:
+            look_up (bool, optional): Look Up Flag for whether interpolation based approach is used. Defaults to False.
+            look_up_file (str | None, optional): Name of the Lookup file to be loaded for the interpolation. Defaults to None.
+            combustion_file (str | None, optional): Mechanism File Used for Combustion Modelling. Defaults to None.
+        """
+
+        self._comb = CombustionCantera(
+            fuel=self._fu_name,
+            oxidiser=self._ox_name,
+            species_file=combustion_file,
+            look_up=look_up,
+            look_up_file=look_up_file,
         )
 
         return
@@ -100,8 +116,7 @@ class CombustionChamber:
             float: Combustion Parameter
         """
 
-        # Getting combustion c_star value (this is converted from ft/s to m/s)
-        c_star = self._cea.get_Cstar(Pc=pcc / 1e5, MR=mr) * 0.3048 * eta_c
+        c_star = self.get_c_star(Pcc=pcc, MR=mr, eta_c=eta_c)
 
         return pcc / c_star
 
@@ -174,14 +189,14 @@ class CombustionChamber:
         fu_stiff = (p_fu - pcc) / pcc
 
         # Finally, we can get the combustion gas thermal conditions - this assumes ideal gas application
-        to = self._cea.get_Temperatures(Pc=pcc / 1e5, MR=mr)[0] * eta_c**2
+        gas = self._comb.get_thermo_prop(Pcc=pcc, MR=mr)
+
+        to = gas.get_temperature() * eta_c**2
 
         # Getting combustion gas properties
-        gamma = self._cea.get_Chamber_MolWt_gamma(Pc=pcc / 1e5, MR=mr)[1]
-        R = 8314 / self._cea.get_Chamber_MolWt_gamma(Pc=pcc / 1e5, MR=mr)[0]
-
-        # Specific Heat Capacity is calculated based on gamma and R, as CEA will account for the solid fraction which is unrealistic for this.
-        cp = R / ((gamma - 1) / gamma)
+        gamma = gas.get_gamma()
+        R = gas.get_R()
+        cp = gas.get_cp()
 
         # We create our Dict and finally return it
 
@@ -243,6 +258,11 @@ class CombustionChamber:
         p_ox = ox_in.get_pressure()
         p_fu = fu_in.get_pressure()
 
+        p_min = min(p_fu, p_ox)
+        # We check if either is cooked, if so we pull a big penalty
+        if p_min < pcc:
+            return 1000
+
         mr = alpha * ((p_ox - pcc) / (p_fu - pcc)) ** (1 / 2)
 
         # We can now solve the combustion parameter at this condition
@@ -259,12 +279,16 @@ class CombustionChamber:
         self,
         ox_in: IncompressibleFluid,
         fu_in: IncompressibleFluid,
+        obj_flag: bool = False,
     ) -> dict:
         """This function solves for the updated combustion chamber conditions based on changes to the oxidiser and fuel inlet conditions for a steady state
 
         Args:
             ox_in (IncompressibleFluid): Oxidiser Incompressible Fluid
             fu_in (IncompressibleFluid): Fuel Incompressible Fluid
+
+        Optional:
+            obj_flag (bool): IdealGas Object Output Flag. Defaults to None
 
         Returns:
             dict: Dictionary of Key Parameters for the Combustion [Pcc, MR, To, m_dot_t, ox_stiff, fu_stiff, gamma, cp]
@@ -294,6 +318,20 @@ class CombustionChamber:
         dic = self.get_cond(
             ox_inlet=ox_in, fu_inlet=fu_in, pcc=pcc_new, eta_c=self._eta_c
         )
+
+        if obj_flag:
+            # We form our ideal gas object
+            comb_gas = IdealGas(
+                p=dic["P_cc"],
+                t=dic["T_o"],
+                cp=dic["Cp"],
+                gamma=dic["gamma"],
+                R=dic["R"],
+            )
+
+            dic["gas_obj"] = comb_gas
+
+        # We can compact alot of the parameters we used
 
         # We can also attach the error
         error = self.perturb_error(
@@ -351,8 +389,7 @@ class CombustionChamber:
         Returns:
             float: C* of the combustion (m/s)
         """
-
-        c_star = self._cea.get_Cstar(Pc=Pcc / 1e5, MR=MR) * 0.3048 * eta_c
+        c_star = self._comb.get_thermo_prop(Pcc=Pcc, MR=MR).get_c_star() * eta_c
 
         return c_star
 
@@ -369,8 +406,10 @@ class CombustionChamber:
             float: Density of the Gas (kg/s)
         """
         # Getting combustion gas properties
-        R = 8314 / self._cea.get_Chamber_MolWt_gamma(Pc=(Pcc / 1e5), MR=MR)[0]
-        T = self._cea.get_Temperatures(Pc=Pcc / 1e5, MR=MR, frozen=1)[0] * eta_c**2
+        gas = self._comb.get_thermo_prop(Pcc=Pcc, MR=MR)
+
+        R = gas.get_R()
+        T = gas.get_temperature() * eta_c**2
 
         rho = Pcc / (R * T)
 
@@ -474,25 +513,16 @@ class CombustionChamber:
         )
 
         # We need to now evaluate for the system performance paramets
+        gas = self._comb.get_thermo_prop(Pcc=self._pcc_transient, MR=MR_current)
 
-        R = (
-            8314
-            / self._cea.get_Chamber_MolWt_gamma(
-                Pc=self._pcc_transient / 1e5, MR=MR_current
-            )[0]
-        )
-        gamma = self._cea.get_Chamber_MolWt_gamma(
-            Pc=self._pcc_transient / 1e5, MR=MR_current
-        )[1]
+        R = gas.get_R()
+        gamma = gas.get_gamma()
 
         dic = {
             "dp_dt": dp_dt,
             "P_cc": self._pcc_transient,
             "MR": MR_current,
-            "T_o": self._cea.get_Temperatures(
-                Pc=self._pcc_transient / 1e5, MR=MR_current, frozen=1
-            )[0]
-            * eta_c**2,
+            "T_o": gas.get_temperature() * eta_c**2,
             "Cp": R / ((gamma - 1) / gamma),
             "gamma": gamma,
             "R": R,
@@ -541,25 +571,17 @@ class CombustionChamber:
         dp_dt = (self._pcc_transient / (rho_c * self._v_cc)) * (
             -(self._pcc_transient * self._a_cc) / c_star
         )
+        gas = self._comb.get_thermo_prop(Pcc=self._pcc_transient, MR=self._MR_transient)
 
-        R = (
-            8314
-            / self._cea.get_Chamber_MolWt_gamma(
-                Pc=self._pcc_transient / 1e5, MR=self._MR_transient
-            )[0]
-        )
-        gamma = self._cea.get_Chamber_MolWt_gamma(
-            Pc=self._pcc_transient / 1e5, MR=self._MR_transient
-        )[1]
+        R = gas.get_R()
+
+        gamma = gas.get_gamma()
 
         dic = {
             "dp_dt": dp_dt,
             "P_cc": self._pcc_transient,
             "MR": self._MR_transient,
-            "T_o": self._cea.get_Temperatures(
-                Pc=self._pcc_transient / 1e5, MR=self._MR_transient, frozen=1
-            )[0]
-            * eta_c**2,
+            "T_o": gas.get_temperature() * eta_c**2,
             "Cp": R / ((gamma - 1) / gamma),
             "R": R,
             "gamma": gamma,
@@ -648,7 +670,12 @@ class GasGenerator(CombustionChamber):
     """This Object Defines the Characteristics of the Gas Generator Object"""
 
     def __init__(self, Ox, Fu, Pcc, MR):
-        super().__init__(Ox, Fu, Pcc, MR)
+        super().__init__(
+            Ox,
+            Fu,
+            Pcc,
+            MR,
+        )
 
 
 class MainEngine(CombustionChamber):
@@ -745,6 +772,34 @@ class LiquidValve:
 
         return m_dot
 
+    def get_exit_condition(
+        self, upstr: IncompressibleFluid, m_dot: float
+    ) -> IncompressibleFluid:
+        """This function solves for the exit condition of the valve, based on an inlet and a mass flow rate.
+
+        Args:
+            upstr (IncompressibleFluid): Upstream Fluid Object of Valve
+            m_dot (float): Mass Flow Rate Through the valve (kg/s)
+
+        Returns:
+            IncompressibleFluid: Exit Fluid Object of the Valve
+        """
+
+        # For this, we need to re-arrange the incompressible fluid flow equation to figure out what our dp is based on the mass flow rate of the valve.
+        rho = upstr.get_density()
+        p1 = upstr.get_pressure()
+
+        a = self._cda * self._pos
+
+        dp = (m_dot / a) ** 2 * (1 / (2 * rho))
+
+        # We can now evaluate for our exit pressure and create our return object accordingly
+        p2 = p1 - dp
+
+        exit = IncompressibleFluid(rho=rho, P=p2)
+
+        return exit
+
     def get_pos(self) -> float:
         """Function that gets the position of the valve
 
@@ -781,20 +836,15 @@ class LiquidValve:
 class Turbine:
     """Object That Defines the Turbine Transient Performance"""
 
-    def __init__(
-        self, delta_b: float, a_rat: float, D_m: float, eta_nom: float, u_co_nom: float
-    ):
+    def __init__(self, a_rat: float, D_m: float, eta_nom: float, u_co_nom: float):
         """Constructor for the Transient Turbine Object
 
         Args:
-            I (float): Moment of Inertia of Blisk (kg m^2)
-            delta_b (float): Change in Angle of Turbine Blade (Degrees)
             a_rat (float): Area Ratio of Nozzle
             d_m (float): Mean Diameter of Turbine (m)
-            eta (float): Turbine Efficiency
+            eta_nom (float): Nominal Turbine Efficiency (%)
+            u_co_nom (float): Nominal Blade Speed Ratio for Turbine
         """
-
-        self._delta_b = (delta_b / 180) * np.pi
         self._a_rat = a_rat
         self._rm = D_m / 2
         self._eta_nom = eta_nom
@@ -802,25 +852,80 @@ class Turbine:
 
         return
 
-    def get_efficiency(self, u_m: float, c_o: float) -> float:
-        """This function gets the efficiency of the turbine stage at off-design performance
+    def get_isentropic_velocity(
+        self,
+        combustion_gas: IdealGas,
+        p_exit: float,
+    ) -> float:
+        """This function solves for the insentropic velocity of the gas, based on the expansion ratio of the gas
 
         Args:
-            u_m (float): Mean Line Velocity (m/s)
+            combustion_gas (IdealGas): Combustion Gas Object Produced by the Gas Generator
+            p_exit (float): Exit Static Pressure for the Turbine
+
+        Returns:
+            float: Isentropic Expansion Velocity of the gas (m/s)
+        """
+        # We simply call the gas function to resolve for the isentropic expansion velocity
+
+        v_is = combustion_gas.get_cis(p1=p_exit)
+
+        return v_is
+
+    def get_efficiency(
+        self, combustion_gas: IdealGas, N: float, p_exit: float
+    ) -> float:
+        """This function gets the efficiency of the turbine stage at off-design performance
+
+        Assumptions:
+            - Based on the Goldman Paper, a linear relationship has been assumed as correlelated to the blade speed ratio.
+            - The efficiency is augmented driven based on the maximum expansion ratio of the nozzles at a given shaft speed,
+              where if the expansion ratio is higher than as designed, the efficiency will be naturally depreciated.
+
+        Args:
+            N (float): Shaft Speed of the Turbopump (rad/s)
             c_o (float): Isentropic Expansion Velocity (m/s)
+            p_exit (float): Exit Static Pressure of the GG Stage (Pa)
 
         Returns:
             float: Total to static efficiency of the turbine (%)
         """
+        # We need to intially solve for the meanline blade speed
+        u_m = self._rm * N
+
+        # We get the isentropic velocity of the gas
+        c_o = self.get_isentropic_velocity(combustion_gas=combustion_gas, p_exit=p_exit)
 
         u_co_a = u_m / c_o
 
         if u_co_a > self._u_co_nom:
 
-            eta = self._eta_nom
+            eta_bep = self._eta_nom
         else:
 
-            eta = self._eta_nom * u_co_a / self._u_co_nom
+            eta_bep = self._eta_nom * u_co_a / self._u_co_nom
+
+        # Finally we need to evaluate what the maxium expansion velocity of the gas is based on the Mach Number
+        M = self.get_supersonic_mach(gamma=combustion_gas.get_gamma())
+
+        # We solve our expansion pressur ratio
+        P_min = self.get_exit_pressure(
+            P_o=combustion_gas.get_pressure(), M=M, gamma=combustion_gas.get_gamma()
+        )
+
+        dh_max = combustion_gas.get_enthalpy_drop(p1=P_min)
+
+        dh_theo = combustion_gas.get_enthalpy_drop(p1=p_exit)
+        # We check if the nozzle is underexpanded
+        if P_min > p_exit:
+            # We then augment the efficiency accordingly to match expectations by clamping power output
+
+            eta = eta_bep * (dh_max / dh_theo)
+
+        else:
+            # We invert this plot and adjust the efficiency based on the difference in enthalpy expansions
+
+            eta = eta_bep * (dh_theo / dh_max)
 
         return eta
 
@@ -913,126 +1018,26 @@ class Turbine:
 
         return P
 
-    def get_exit_velocity(self, T: float, gamma: float, R: float, M: float) -> float:
-        """This function solves for the exit velocity of the gas
-
-        Args:
-            T (float): Static Temperature of the gas at the nozzle exit
-            gamma (float): Specific Heat Ratio of the Gas
-            R (float): Specific Gas Constant
-            M (float): Mach Number of the gas at the nozzle exit
-
-        Returns:
-            float: Exit Velocity of the gas
-        """
-
-        v = M * (gamma * R * T) ** (1 / 2)
-
-        return v
-
-    def get_choke_prat(self, gamma: float) -> float:
-        """This function solves for the choking pressure ratio of a fluid
-
-        Args:
-            gamma (float): Specific Heat Ratio of the gas
-
-        Returns:
-            float: Choking Pressure Ratio (P_o/P)
-        """
-
-        p_rat = 1 / (self.get_exit_pressure(P_o=1, M=1, gamma=gamma))
-
-        return p_rat
-
-    def torque_subsonic(
-        self, T_o: float, P_o: float, gamma: float, R: float, P_exit: float, N: float
-    ) -> float:
-        """Gets the specific torque for a subsonic solution
-
-        Args:
-            T_o (float): Turbine Inlet Temperature (K)
-            P_o (float): Turbine Inlet Pressure (Pa)
-            gamma (float): Specific Heat Ratio
-            R (float): Specific Gas Constant (J /kg K)
-            P_exit (float): Exit Pressure of the Turbine (Pa)
-            N (float): Shaft Speed of the pump (rad/s)
-
-        Returns:
-            float: Specific Torque produced by turbine (N m s / kg)
-        """
-
-        M_sub = self.get_subsonic_mach(gamma=gamma)
-
-        # We then get the exit temperature
-        T_s = self.get_static_temp(T_o=T_o, M=M_sub, gamma=gamma)
-
-        P_s = self.get_exit_pressure(P_o=P_o, M=M_sub, gamma=gamma)
-
-        v_e = self.get_exit_velocity(T=T_s, gamma=gamma, R=R, M=M_sub)
-
-        u = self._rm * N
-
-        T = self._eta * v_e * self._rm * (1 + np.cos(self._delta_b))
-
-        return T
-
-    def torque_supersonic(
-        self, T_o: float, P_o: float, gamma: float, R: float, P_exit: float
-    ) -> float:
-        """Gets the specific torque for a supersonic solution
-
-        Args:
-            T_o (float): _description_
-            P_o (float): _description_
-            gamma (float): _description_
-            R (float): _description_
-            P_exit (float): _description_
-
-        Returns:
-            float: Specific Torque produced by turbine (N m s / kg)
-        """
-
-        M_sus = self.get_supersonic_mach(gamma=gamma)
-
-        # We then get the exit temperature
-        T_s = self.get_static_temp(T_o=T_o, M=M_sus, gamma=gamma)
-
-        P_s = self.get_exit_pressure(P_o=P_o, M=M_sus, gamma=gamma)
-
-        if P_s < P_exit:
-            v_e = 0
-        else:
-            v_e = self.get_exit_velocity(T=T_s, gamma=gamma, R=R, M=M_sus)
-
-        T = self._eta * v_e * self._rm * (1 + np.cos(self._delta_b))
-
-        return T
-
-    def get_torque(
-        self, T_o: float, P_o: float, gamma: float, R: float, P_exit: float
-    ) -> float:
+    def get_torque(self, combustion_gas: IdealGas, P_exit: float, N: float) -> float:
         """This function solves for the Torque produced by the Turbine Stage
 
         Args:
-            T_o (float): Stagnation Temperature of the Gas (K)
-            P_o (float): Stagnation Pressure of the Gas (Pa)
-            gamma (float): Specific Heat Ratio of the Gas
-            R (float): Specific Gas Constant of the Gas (J/kg)
-            P_exit (float): Exit Static Pressure of the turbine stage
+            combustion_gas (IdealGas): Combustion Gas Products Produced by the Gas Generator
+            P_exit (float): Exit Pressure of the Turbine (Pa)
+            N (float): Shaft Speed of the Turbine (rad/s)
 
         Returns:
-            float: Torque produced by the turbine stage
+            float: Torque produced by the Turbine
         """
 
-        # We solve for the torques produced by both solutions, then select the largest one
+        # We can now solve for the expected efficiency of the system
+        eta = self.get_efficiency(combustion_gas=combustion_gas, N=N, p_exit=P_exit)
 
-        T_sub = self.torque_subsonic(T_o=T_o, P_o=P_o, gamma=gamma, R=R, P_exit=P_exit)
+        # We can now solve for the power being produced by the turbine
+        Pw = eta * combustion_gas.get_enthalpy_drop(p1=P_exit)
 
-        T_sus = self.torque_supersonic(
-            T_o=T_o, P_o=P_o, gamma=gamma, R=R, P_exit=P_exit
-        )
-
-        T = max(T_sub, T_sus)
+        # We can finally solve for the torque produced by the turbine by dividing it by the current shaft speed.
+        T = Pw / N
 
         return T
 
@@ -1043,16 +1048,24 @@ class Pump:
     def __init__(
         self,
         D: float,
-        Q_nom,
+        Q_nom: float,
         eta_nom: float,
         N_nom: float,
-        I: float | None = None,
         Q_max_factor: float = 1.5,
         alpha_factor: float = 10,
     ):
+        """_summary_
+
+        Args:
+            D (float): Outer Diameter of Pump
+            Q_nom (float): Nominal Volumetric Flow Rate of the Pump (m^3/s)
+            eta_nom (float): Nominal Efficiency of the Pump (%)
+            N_nom (float): Nominal Rotational Rate of the Pump (rad/s)
+            Q_max_factor (float, optional): _description_. Defaults to 1.5.
+            alpha_factor (float, optional): _description_. Defaults to 10.
+        """
 
         self._D = D
-        self._I = I
 
         self._g = 9.18
 
@@ -1138,6 +1151,9 @@ class Pump:
 
             eta = eta * (H / H_o)
 
+        if eta <= 0:
+            eta = 0.00001
+
         return eta
 
     def get_head(self, Q, N) -> float:
@@ -1200,9 +1216,6 @@ class Pump:
 
         # We get the pump efficiency
         eta = self.get_eta(Q=Q, N=N)
-
-        if eta < 0:
-            eta = 0
 
         dp = H * self._g * rho
 
