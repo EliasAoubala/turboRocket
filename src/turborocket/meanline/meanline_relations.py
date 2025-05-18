@@ -423,6 +423,11 @@ class TurbineStageDesign:
 
         M_w_1 = self._w1 / self._a_star_2
 
+        print(f"w_1: {self._w1}, a_2: {self._a_star_2}")
+        print(f"c_1: {self._c1}, a_1: {self._a_star_1}")
+        print(f"M_Star_w_1: {M_w_1}")
+        print(f"M_star_c_1: {self._c1/self._a_star_1}")
+
         self._phi_r = (
             (1 - 0.23 * (1 - (self._beta_1 + beta_2) / np.pi) ** 3)
             * (1 - 0.05 * (M_w_1 - 1) ** 2)

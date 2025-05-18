@@ -1,12 +1,12 @@
 generator: YamlWriter
 cantera-version: 3.1.0
 git-commit: '6e00275'
-date: Sat May 17 23:17:02 2025
+date: Sun May 18 22:55:53 2025
 phases:
   - name: ""
     thermo: ideal-gas
     elements: [C, H, O, N]
-    species: [CH4, CO, CO2, "C3H8O,2propanol", H, H2, H2O, NO, N2, N2O, O, OH, O2]
+    species: [CH4, CO, CO2, "C3H8O,2propanol", H, H2, H2O, NO, N2, N2O, OH, O2]
     state:
       T: 1.0e-03
       density: 1.0e-03
@@ -121,17 +121,6 @@ species:
         - [4.82318873, 2.62685279e-03, -9.58426058e-07, 1.59991296e-10,
         -9.77416939e-15, 8073.35662, -2.202366]
       note: L 7/88
-  - name: O
-    composition: {O: 1.0}
-    thermo:
-      model: NASA7
-      temperature-ranges: [200.0, 1000.0, 6000.0]
-      data:
-        - [3.1682671, -3.27931884e-03, 6.64306396e-06, -6.12806624e-09,
-        2.11265971e-12, 2.91222592e+04, 2.05193346]
-        - [2.54363697, -2.73162486e-05, -4.1902952e-09, 4.95481845e-12,
-        -4.79553694e-16, 2.9226012e+04, 4.92229457]
-      note: L 1/90
   - name: OH
     composition: {H: 1.0, O: 1.0}
     thermo:

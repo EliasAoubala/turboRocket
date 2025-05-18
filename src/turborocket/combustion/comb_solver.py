@@ -107,6 +107,7 @@ class CombustionCantera:
         MR_max: float = 6,
         MR_min: float = 0.1,
         N: float = 50,
+        frozen: bool = True,
     ) -> None:
         """This function generates a set of lookup interpolation functions for combustion properties
 
@@ -116,6 +117,7 @@ class CombustionCantera:
             MR_max (float, optional): Maximum Mixture Ratio (n.d.). Defaults to 8.
             MR_min (float, optional): Minimum Mixture Ratio (n.d.). Defaults to 0.3.
             N (float, optional): Number of Points to Consider. Defaults to 50
+            frozen (bool, optional): Frozen Composition Flag. Defaults to True
         """
 
         if self._look_up_file is not None:
@@ -158,7 +160,9 @@ class CombustionCantera:
             # We then iterate through these points
             for index, x in np.ndenumerate(P_array):
 
-                result = self.solve_cantera(Pcc=P_array[index], MR=MR_array[index])
+                result = self.solve_cantera(
+                    Pcc=P_array[index], MR=MR_array[index], frozen=frozen
+                )
 
                 # We then append these accordingly
                 self._CP_array[index] = result.get_cp()
@@ -185,7 +189,7 @@ class CombustionCantera:
         return
 
     def solve_cantera(
-        self, Pcc: float, MR: float, T: float = 295, dt: float = 1
+        self, Pcc: float, MR: float, T: float = 295, dt: float = 1, frozen: bool = True
     ) -> IdealGas:
         """Gets the Specific Heat Capacity of the Combustion Mixture
 
@@ -196,6 +200,7 @@ class CombustionCantera:
         Optional:
             T (float): Inlet Prop Conditions (K)
             dt (float): Temperature Change Increment used for Specific Heat Derivation
+            frozen (bool): Frozen Composition Flag for the defintion of Thermodynamic Properties.
 
         Returns:
             float: Combustion Gas Object
@@ -220,52 +225,72 @@ class CombustionCantera:
         T_o = self._gas.T
         R = ct.gas_constant / self._gas.mean_molecular_weight
 
-        # We then perturb the gas mixture
-        self._gas.TP = (T_o + dt, Pcc)
+        if not frozen:
 
-        # We re-equilibriate the gas
-        self._gas.equilibrate("TP")
+            # We then perturb the gas mixture
+            self._gas.TP = (T_o + dt, Pcc)
 
-        # We then get the new enthalpy
-        h_1 = self._gas.enthalpy_mass
+            # We re-equilibriate the gas
+            self._gas.equilibrate("TP")
 
-        # We can then shift the mixture to a point with a fixed density at the perturbed termperature
-        self._gas.TD = (T_o + dt, d_o)
+            # We then get the new enthalpy
+            h_1 = self._gas.enthalpy_mass
 
-        # We equilibriate
-        self._gas.equilibrate("TV")
+            # We can then shift the mixture to a point with a fixed density at the perturbed termperature
+            self._gas.TD = (T_o + dt, d_o)
 
-        u_1 = self._gas.int_energy_mass
+            # We equilibriate
+            self._gas.equilibrate("TV")
 
-        # Thermodynamic Properties
-        cp = (h_1 - h_o) / dt
-        cv = (u_1 - u_o) / dt
-        gamma = cp / cv
+            u_1 = self._gas.int_energy_mass
+
+            # Thermodynamic Properties
+            cp = (h_1 - h_o) / dt
+            cv = (u_1 - u_o) / dt
+            gamma = cp / cv
+
+        else:
+            # For a frozen case, we just directly pull the data from the cantera gas object
+
+            cp = self._gas.cp_mass
+            cv = self._gas.cv_mass
+            gamma = cp / cv
 
         gas = IdealGas(p=Pcc, t=T_o, gamma=gamma, R=R, cp=cp)
 
         return gas
 
     def get_thermo_prop(
-        self, Pcc: float, MR: float, T: float = 295, dt: float = 1
+        self, Pcc: float, MR: float, T: float = 295, dt: float = 1, frozen: bool = True
     ) -> IdealGas:
+        """Function for getting the thermodynamic Properties of the Gas
+
+        Args:
+            Pcc (float): Chamber Pressure of the Gas (Pa)
+            MR (float): Mixture Ratio of the Gas
+            T (float, optional): Initial Temperature of the Propellants (K). Defaults to 295.
+            dt (float, optional): Temperature Increment for Equilibrium solutions (K). Defaults to 1.
+            frozen (bool, optional): Frozen species flag for thermodynamics. Defaults to True.
+
+        Returns:
+            IdealGas: Ideal Gas Object
+        """
 
         Pcc = float(Pcc)
         MR = float(MR)
 
         if self._look_up:
             # We perform a regression of all our points
-
-            cp = interpn((self._P_array, self._MR_array), self._CP_array, [Pcc, MR])
+            cp = interpn((self._P_array, self._MR_array), self._CP_array.T, [Pcc, MR])
             gamma = cp / interpn(
-                (self._P_array, self._MR_array), self._CV_array, [Pcc, MR]
+                (self._P_array, self._MR_array), self._CV_array.T, [Pcc, MR]
             )
-            R = interpn((self._P_array, self._MR_array), self._R_array, [Pcc, MR])
-            T = interpn((self._P_array, self._MR_array), self._T_array, [Pcc, MR])
+            R = interpn((self._P_array, self._MR_array), self._R_array.T, [Pcc, MR])
+            T = interpn((self._P_array, self._MR_array), self._T_array.T, [Pcc, MR])
 
             gas = IdealGas(p=Pcc, t=T, gamma=gamma, R=R, cp=cp)
 
         else:
-            gas = self.solve_cantera(Pcc=Pcc, MR=MR, T=T, dt=dt)
+            gas = self.solve_cantera(Pcc=Pcc, MR=MR, T=T, dt=dt, frozen=frozen)
 
         return gas
