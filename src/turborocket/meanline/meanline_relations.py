@@ -271,8 +271,8 @@ class TurbineStageDesign:
             List[float]: Rotor Diameters [D_hub, D_tip] , (m)
         """
 
-        self._d_hub = self._d_mean - self._sb / 2
-        self._d_tip = self._d_mean + self._sb / 2
+        self._d_hub = self._d_mean - self._sb
+        self._d_tip = self._d_mean + self._sb
 
         return [self._d_hub, self._d_tip]
 
@@ -422,11 +422,6 @@ class TurbineStageDesign:
         # This is absolute mach number, rather than the critical mach number, to convert - we just need to know the temperature at this condition.
 
         M_w_1 = self._w1 / self._a_star_2
-
-        print(f"w_1: {self._w1}, a_2: {self._a_star_2}")
-        print(f"c_1: {self._c1}, a_1: {self._a_star_1}")
-        print(f"M_Star_w_1: {M_w_1}")
-        print(f"M_star_c_1: {self._c1/self._a_star_1}")
 
         self._phi_r = (
             (1 - 0.23 * (1 - (self._beta_1 + beta_2) / np.pi) ** 3)

@@ -478,8 +478,8 @@ class SupersonicProfile:
         y_array = np.append(y_array, self._y_i_line_sf[::-1])
 
         # The then go to the inlet upper Transition
-        x_array = np.append(x_array, (self._xlkt_iu_sf)[-2::-1])
-        y_array = np.append(y_array, (self._ylkt_iu_sf)[-2::-1])
+        x_array = np.append(x_array, (self._xlkt_iu_sf)[-2:1:-1])
+        y_array = np.append(y_array, (self._ylkt_iu_sf)[-2:1:-1])
 
         # # We then do the inlet Upper Circular element
         x_array = np.append(x_array, self._x_u_array_sf)
@@ -494,8 +494,8 @@ class SupersonicProfile:
         y_array = np.append(y_array, self._y_o_line_sf)
 
         # # # We then do the outlet lower transition
-        x_array = np.append(x_array, self._xlkt_ol_sf[-2::-1])
-        y_array = np.append(y_array, self._ylkt_ol_sf[-2::-1])
+        x_array = np.append(x_array, self._xlkt_ol_sf[-2:1:-1])
+        y_array = np.append(y_array, self._ylkt_ol_sf[-2:1:-1])
 
         # # We then do the lower circular element
         x_array = np.append(x_array, (self._x_l_array_sf)[::-1])
@@ -504,6 +504,9 @@ class SupersonicProfile:
         # # We then do the inlet lower transition element
         x_array = np.append(x_array, (self._xlkt_il_sf)[1:-2])
         y_array = np.append(y_array, (self._ylkt_il_sf)[1:-2])
+
+        x_array = np.append(x_array, self._x_i_line_sf[-1])
+        y_array = np.append(y_array, self._y_i_line_sf[-1])
 
         z_array = np.zeros(x_array.size)
 
@@ -833,8 +836,15 @@ class SymmetricFiniteEdge(SupersonicProfile):
 
         return dic
 
-    def generate_finite_edge(self) -> None:
-        """This function generates the finite leading and trailing edges for the turbine"""
+    def generate_finite_edge(self, N: int = 100) -> None:
+        """This function generates a finite leading edge for the Turbine
+
+        Args:
+            N (int, optional): Number of Points to discretise on each line segment. Defaults to 100.
+
+        Raises:
+            ValueError: Leading Edge Angle is Protruding
+        """
 
         # We need to figure out what the blade thickness is
         self._t = self._t_g_rat * self._g_star
@@ -864,26 +874,31 @@ class SymmetricFiniteEdge(SupersonicProfile):
             self._dy_edge = self._dx_edge * np.tan(self._beta_i)
 
         if append_flag:
-            # We can now insert out corner point to the arrays
-            self._x_i_line = np.insert(
-                self._x_i_line, 1, self._x_i_line[-1] + self._dx_edge
+            # We can generate our intersection points
+
+            x_i_new = self._x_i_line[-1] + self._dx_edge
+            y_i_new = self._y_i_line[-1] + self._dy_edge
+
+            self._x_i_line = np.append(
+                np.linspace(self._x_i_line[0], x_i_new, N),
+                np.linspace(x_i_new, self._x_i_line[-1], N)[1:],
+            )
+            self._y_i_line = np.append(
+                np.linspace(self._y_i_line[0], y_i_new, N),
+                np.linspace(y_i_new, self._y_i_line[-1] - self._t, N)[1:],
             )
 
-            self._y_i_line = np.insert(
-                self._y_i_line, 1, self._y_i_line[-1] + self._dy_edge
+            x_o_new = self._x_o_line[-1] - self._dx_edge
+            y_o_new = self._y_o_line[-1] + self._dy_edge
+
+            self._x_o_line = np.append(
+                np.linspace(self._x_o_line[0], x_o_new, N),
+                np.linspace(x_o_new, self._x_o_line[-1], N)[1:],
             )
-
-            self._y_i_line[-1] -= self._t
-
-            self._x_o_line = np.insert(
-                self._x_o_line, 1, self._x_o_line[-1] - self._dx_edge
+            self._y_o_line = np.append(
+                np.linspace(self._y_o_line[0], y_o_new, N),
+                np.linspace(y_o_new, self._y_o_line[-1] - self._t, N)[1:],
             )
-
-            self._y_o_line = np.insert(
-                self._y_o_line, 1, (self._y_o_line[-1] + self._dy_edge)
-            )
-
-            self._y_o_line[-1] -= self._t
 
         # Update Leading Edge Thickness
         self._g_star += self._t

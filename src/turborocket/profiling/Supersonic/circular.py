@@ -41,8 +41,6 @@ def inv_M_star(gamma, M_star):
         gamma (float): Specific Heat Ratio
         M_star (float): Crtical Velocity ratio
     """
-    print(M_star)
-    print((((gamma + 1) / 2) - ((gamma - 1) / 2) * M_star**2))
     M = M_star / (((gamma + 1) / 2) - ((gamma - 1) / 2) * M_star**2) ** (1 / 2)
 
     return M
