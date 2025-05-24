@@ -510,6 +510,9 @@ class SupersonicProfile:
 
         z_array = np.zeros(x_array.size)
 
+        # We need to center in the y_axis- to do this, we will get the maximum and minimum value for the y, half it and shift accordingly.
+        y_array = y_array - y_array.min() - 0.5 * (y_array.max() - y_array.min())
+
         df = pd.DataFrame(data={"x": x_array * 1e3, "y": y_array * 1e3, "z": z_array})
 
         return df

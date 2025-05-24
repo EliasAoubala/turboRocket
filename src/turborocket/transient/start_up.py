@@ -1178,7 +1178,7 @@ class Pump:
 
         a_3 = np.pi * (self._D_3 / 2) ** 2
 
-        return a_3 * v_3
+        return a_3 * v_3 * self._C_c
 
     def get_eta_bep(self, N: float) -> float:
         """Simpliefied Model for Identifying what the best operating efficiency of the pump is
@@ -1192,7 +1192,7 @@ class Pump:
 
         return self._eta_bep * (N / self._N_nom)
 
-    def get_eta(self, Q: float, N: float) -> float:
+    def get_eta(self, Q: float, N: float, fluid: IncompressibleFluid) -> float:
         """Simplified function that solves for the efficiency of the Pump
 
         Args:
@@ -1201,34 +1201,34 @@ class Pump:
         Returns:
             float: Efficiency of the Turbine
         """
-        # We need to get the best operating point
+        # We need to get the fixed shaft power
         Q_max = self.get_q_max(N=N)
-        eta_bep = self.get_eta_bep(N=N)
-        eta = eta_bep * (2 * (Q / Q_max - 0.5) ** (2) + 0.5)
+        H_o = self.get_head(Q=0, N=N)
 
-        if Q_max == 0:
-            return 0
+        P_max = fluid.get_density() * self._g * H_o * Q_max
 
-        if Q >= Q_max:
-            H = self.get_head(Q=Q, N=N)
-            H_o = self.shut_off_head(N=N)
+        # We can then figure out what our shaft power is
+        P_shaft = P_max / self.get_eta_bep(N=N)
 
-            eta = eta * (H / H_o)
+        # We can then evaluate for what the actual power is
+        H_a = self.get_head(Q=Q, N=N)
 
-        elif Q / Q_max <= np.sqrt(1 / 2):
-            eta = eta_bep * (4 * ((np.sqrt(1 / 2)) - 0.5)) * (Q / Q_max)
+        P_actual = fluid.get_density() * self._g * H_a * Q
 
-        if eta <= 0:
-            eta = 0.00001
+        # We can thus solve for the efficiency
+        eta = P_actual / P_shaft
+
+        if N == 0:
+            eta = 0
 
         return eta
 
-    def get_head(self, Q, N) -> float:
+    def get_head(self, Q: float, N: float) -> float:
         """This function solves for the head produced by the pump
 
         Args:
-            Q (_type_): Volumetric Flow Rate Through the Pump (m^3 /s)
-            N (_type_): Rotational Rate for the Pump (Rad/s)
+            Q (float): Volumetric Flow Rate Through the Pump (m^3 /s)
+            N (float): Rotational Rate for the Pump (Rad/s)
 
         Returns:
             float: Head Produced by Pump (m)
@@ -1289,32 +1289,31 @@ class Pump:
 
         return outlet
 
-    def get_torque(self, inlet: IncompressibleFluid, N: float, m_dot: float) -> float:
+    def get_torque(
+        self,
+        inlet: IncompressibleFluid,
+        N: float,
+    ) -> float:
         """This function solves for the torque produced from the pump
 
         Args:
             inlet (IncompressibleFluid): Inlet Fluid of the pump
             N (float): Rotational Rate of the Pump (rad/s)
-            m_dot (float): Mass Flow Rate Through the pump
 
         Returns:
-            float: Torque Produced from the Pump
+            float: Torque Produced from the Pump (N m)
         """
-        rho = inlet.get_density()
-        Q = m_dot / rho
+        # We solve for the shaft power which is constant
+        Q_max = self.get_q_max(N=N)
+        H_o = self.get_head(Q=0, N=N)
 
-        H = self.get_head(Q=Q, N=N)
+        P_max = inlet.get_density() * self._g * H_o * Q_max
 
-        eta = self.get_eta(Q=Q, N=N)
-
-        P_shaft = m_dot * self._g * H / eta
+        # We can then evaluate for the torque of the system, by dividing our max power by best effiency point and shaft speed
+        T = P_max / (self.get_eta_bep(N=N) * N)
 
         if N == 0:
-            # Shaft not spinning, hence no torque
             T = 0
-            return T
-
-        T = P_shaft / N
 
         return T
 
