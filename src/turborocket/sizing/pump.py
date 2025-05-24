@@ -23,7 +23,6 @@ class Barske:
         dp: float,
         m_dot: float,
         N: float,
-        alpha: float,
     ) -> None:
         """Constructor for the Barske Impeller Object
 
@@ -31,13 +30,10 @@ class Barske:
             dp (float): Pressure Head Across the Pump (Pa)
             m_dot (float): Nominal Mass Flow Rate Through the Pump (kg/s)
             N (float): Nominal Shaft Speed of the Pump (rad/s)
-            alpha (float): Impeller Angle (Degrees)
         """
         self._dp = dp
         self._m_dot = m_dot
         self._N = N
-        self._alpha = alpha
-
         # We also define our conversion parameters
         self._ms_to_fts = 3.28084
         self._kgm3_to_lbcuft = 0.062428
@@ -52,6 +48,7 @@ class Barske:
         l_2: float,
         v_0: float = 3.65,
         v_3f: float = 0.85,
+        d_1f: float = 1.1,
         a_3f: float = 3.5,
         delta_div: float = 8,
         diffuser_type: DiffuserType = DiffuserType.circular,
@@ -65,6 +62,7 @@ class Barske:
             l_2 (float): Blade Axial Length at Impeller Exit (m)
             v_0 (float, Optional): Impeller Inlet Axial Velocity (m/s) . Defaults to 12 ft/s
             v_3f (float, Optional): Diffuser Velocity Factor (0.8 - 0.9). Defaults to 0.85.
+            d_1f (float, Optional): Pump Inlet Preswirl Area Expansion Factor. Defaults to 1.1
             a_3f (float, Optional): Diffuser Expansion Area Factor (3 - 4). Defaults to 3.5.
             delta_div (float, Optional): Diffuser Full Exit Angle. For a circular diffuser: [8 - 10]. For a square diffuser: [4 - 8]. (Degrees). Defaults to 10 degree.
             diffuser_type (DiffuserType, Optional): Diffuser Type Enum Object. Defaults to a Circular Diffuser
@@ -88,10 +86,9 @@ class Barske:
             raise ValueError(f"Blade Entrance Length must be a positive number")
         elif l_2 <= 0:
             raise ValueError(f"Blade Exit Axial Length must be a positive Number")
-        elif v_3f < 0.8 or v_3f > 0.9:
-            raise ValueError(
-                f"Diffuser Throat Velocity Factor is outwith recommendation 0.8 <= {v_3f} < 0.9 "
-            )
+
+        if l_1 < l_2:
+            raise ValueError(f"Axial Blade Shape is unacceptable! l_1 > l_2")
 
         # We then check the divergence angle based on the diffuer
         if diffuser_type == DiffuserType.circular:
@@ -113,9 +110,14 @@ class Barske:
         # Defining Inlet Conditions
         self._v_0 = v_0
         self._d_0 = 2 * (self._m_dot / (np.pi * rho * self._v_0)) ** (1 / 2)
-        self._d_1 = self.d_0
+        self._d_1 = self._d_0 * d_1f
 
         self._u_1 = (self._d_1 / 2) * self._N  # m/s
+
+        if self._u_1 * self._ms_to_fts > 150:
+            raise ValueError(
+                f"Inner Blade Speed Exceeds 150 ft/s, slow down blade by either decreasing inlet velocity or diameter. {self._u_1* self._ms_to_fts} > 150 ft/s"
+            )
 
         # Evaluates for the head of the pump and associated required exit velocity
         self._h = self._dp / (rho * self._g)  # m
@@ -170,8 +172,8 @@ class Barske:
 
         elif diffuser_type == DiffuserType.rectangular:
             # Assume that the diffuser exit dimensions are like this
-            self._d_3 = self._a_3 / (self._l_2 + 2 * self._c_1)
-            self._d_4 = self._a_4 / (self._l_2 + 2 * self._c_1)
+            self._d_3 = self._a_3 ** (1 / 2)
+            self._d_4 = self._a_4 ** (1 / 2)
             self._l_3 = (self._d_4 - self._d_3) / np.tan(np.deg2rad(self._delta))
 
         # Finally solving for the exit velocity of the diffuser
@@ -180,16 +182,20 @@ class Barske:
         # We can create our dataframe
 
         data = {
-            "d_1": self._d_1,
-            "d_2": self._d_2,
-            "l_1": self._l_1,
-            "l_2": self._l_2,
-            "c_1": self._c_1,
-            "c_2": self._c_2,
-            "Diffuser": diffuser_type,
-            "d_3": self._d_3,
-            "d_4": self._d_4,
-            "L": self._l_3,
+            "Eye Diameter - d_0 (mm)": [self._d_0 * 1e3],
+            "Inlet Diameter - d_1 (mm)": [self._d_1 * 1e3],
+            "Exit Diameter - d_2 (mm)": [self._d_2 * 1e3],
+            "Entrance Axial Blade Length - l_1 (mm)": [self._l_1 * 1e3],
+            "Exit Axial Blade Legnth - l_2 (mm)": [self._l_2 * 1e3],
+            "Axial Clearance - c_1 (mm)": [self._c_1 * 1e3],
+            "Radial Clearance - c_2 (mm)": [self._c_2 * 1e3],
+            "Diffuser Type": [diffuser_type],
+            "Diffuser Throat - d_3 (mm)": [self._d_3 * 1e3],
+            "Diffuser Exit - d_4 (mm)": [self._d_4 * 1e3],
+            "Diffuser Length - L (mm)": [self._l_3 * 1e3],
+            "Inlet Eye Velocity - v_o (m/s)": [self._v_0],
+            "Impeller Inlet Velocity - v_1 (m/s)": [self._v_1],
+            "Relative Exit Velocity - w_2 (m/s)": [self._w_2],
         }
 
         df = pd.DataFrame(data=data)
@@ -199,6 +205,7 @@ class Barske:
     def get_pump_performance(
         self,
         fluid: IncompressibleFluid,
+        m_dot: float,
         psi: float | None = None,
         N: float | None = None,
     ) -> pd.DataFrame:
@@ -206,6 +213,7 @@ class Barske:
 
         Args:
             fluid (IncompressibleFluid): Inlet Fluid Object of the Pump
+            m_dot (float): Mass Flow Rate Through Pump.
             psi (float | None, optional): Pressure Factor of the pump. Defaults to Parameter Defined During Sizing.
             N (float | None, optional): Shaft Speed of the Pump (rad/s). Defaults to design shaft speed.
 
@@ -216,12 +224,35 @@ class Barske:
         if psi is None:
             psi = self._psi
 
-        self.H_metric = self.H * 0.3048  # m
-        self.p_metric = self.p * 0.0689476  # bar
+        if N is None:
+            N = self._N
 
-        self.specific_speed = (self.N * (self.G) ** 0.5) / (self.H**0.75)
+        # Getting our fluid density
+        rho = fluid.get_density()
 
-        return self.H_metric, self.p_metric
+        # Solving for the pressure head and pressure rised
+        H = self.get_head(psi=psi, N=N)
+        dp = H * rho * self._g
+
+        # We then get the efficiency of the pump
+        eta = self.get_instantaneous_efficiency(m_dot=m_dot, fluid=fluid, psi=psi, N=N)
+
+        # We can then solve for our required shaft power
+        pw_hyd = dp * m_dot / rho
+        pw_shaft = (dp * m_dot / rho) / eta
+
+        # From here, we can assemble our dictionary accordingly
+        df = pd.DataFrame(
+            data={
+                "Head Rise (m)": [H],
+                "Head Rise (Bar)": [dp / 1e5],
+                "Efficiency (%)": [eta * 1e2],
+                "Hydraulic Power (kW)": [pw_hyd / 1e3],
+                "Required Shaft Power (kW)": [pw_shaft / 1e3],
+            }
+        )
+
+        return df
 
     def get_head(
         self,
