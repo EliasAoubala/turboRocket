@@ -508,6 +508,7 @@ class CombustionChamber:
             "MR": 0,
             "T_o": 0,
             "Cp": 1005,
+            "R": 287,
             "gamma": 1.4,
             "ox_stiffness": 0,
             "fu_stiffness": 0,
@@ -515,6 +516,16 @@ class CombustionChamber:
             "m_dot_o": m_dot_ox,
             "m_dot_f": m_dot_fu,
         }
+
+        comb_gas = IdealGas(
+            p=dic["P_cc"],
+            t=dic["T_o"],
+            cp=dic["Cp"],
+            gamma=dic["gamma"],
+            R=dic["R"],
+        )
+
+        dic["gas_obj"] = comb_gas
 
         return dic
 
@@ -543,17 +554,14 @@ class CombustionChamber:
         # We need to now evaluate for the system performance paramets
         gas = self._comb.get_thermo_prop(Pcc=self._pcc_transient, MR=MR_current)
 
-        R = gas.get_R()
-        gamma = gas.get_gamma()
-
         dic = {
             "dp_dt": dp_dt,
             "P_cc": self._pcc_transient,
             "MR": MR_current,
             "T_o": gas.get_temperature() * eta_c**2,
-            "Cp": R / ((gamma - 1) / gamma),
-            "gamma": gamma,
-            "R": R,
+            "Cp": gas.get_cp(),
+            "R": gas.get_R(),
+            "gamma": gas.get_gamma(),
             "ox_stiffness": (ox_in.get_pressure() - self._pcc_transient)
             / self._pcc_transient,
             "fu_stiffness": (fu_in.get_pressure() - self._pcc_transient)
@@ -562,6 +570,16 @@ class CombustionChamber:
             "m_dot_o": m_dot_ox,
             "m_dot_f": m_dot_fu,
         }
+
+        comb_gas = IdealGas(
+            p=dic["P_cc"],
+            t=dic["T_o"],
+            cp=dic["Cp"],
+            gamma=dic["gamma"],
+            R=dic["R"],
+        )
+
+        dic["gas_obj"] = comb_gas
 
         # We store the last MR for locking
         self._MR_transient = MR_current
@@ -601,18 +619,14 @@ class CombustionChamber:
         )
         gas = self._comb.get_thermo_prop(Pcc=self._pcc_transient, MR=self._MR_transient)
 
-        R = gas.get_R()
-
-        gamma = gas.get_gamma()
-
         dic = {
             "dp_dt": dp_dt,
             "P_cc": self._pcc_transient,
             "MR": self._MR_transient,
             "T_o": gas.get_temperature() * eta_c**2,
-            "Cp": R / ((gamma - 1) / gamma),
-            "R": R,
-            "gamma": gamma,
+            "Cp": gas.get_cp(),
+            "R": gas.get_R(),
+            "gamma": gas.get_gamma(),
             "ox_stiffness": (ox_in.get_pressure() - self._pcc_transient)
             / self._pcc_transient,
             "fu_stiffness": (fu_in.get_pressure() - self._pcc_transient)
@@ -621,6 +635,16 @@ class CombustionChamber:
             "m_dot_o": m_dot_ox,
             "m_dot_f": m_dot_fu,
         }
+
+        comb_gas = IdealGas(
+            p=dic["P_cc"],
+            t=dic["T_o"],
+            cp=dic["Cp"],
+            gamma=dic["gamma"],
+            R=dic["R"],
+        )
+
+        dic["gas_obj"] = comb_gas
 
         return dic
 
@@ -974,6 +998,9 @@ class Turbine:
         dh_max = combustion_gas.get_enthalpy_drop(p1=P_min)
 
         dh_theo = combustion_gas.get_enthalpy_drop(p1=p_exit)
+
+        if dh_max == 0:
+            return 0
         # We check if the nozzle is underexpanded
         if P_min > p_exit:
             # We then augment the efficiency accordingly to match expectations by clamping power output
@@ -1236,7 +1263,7 @@ class Pump:
 
         # We firstly need to solve for the shut_off head of the pump
         H_o = self.shut_off_head(N=N)
-
+        print(f"Shut off Head: {H_o} m")
         # We need to get the maximum flow operating point
         Q_max = self.get_q_max(N=N)
 
@@ -1308,6 +1335,9 @@ class Pump:
         H_o = self.get_head(Q=0, N=N)
 
         P_max = inlet.get_density() * self._g * H_o * Q_max
+
+        print(f"Shaft Seed: {N*60/(2*np.pi)}")
+        print(f"Actual Head: {H_o} m")
 
         # We can then evaluate for the torque of the system, by dividing our max power by best effiency point and shaft speed
         T = P_max / (self.get_eta_bep(N=N) * N)

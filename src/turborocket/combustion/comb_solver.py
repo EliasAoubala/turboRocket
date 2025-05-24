@@ -103,10 +103,10 @@ class CombustionCantera:
     def generate_look_up(
         self,
         P_max: float = 60e5,
-        P_min: float = 10e5,
+        P_min: float = 5e5,
         MR_max: float = 6,
         MR_min: float = 0.1,
-        N: float = 50,
+        N: float = 100,
         frozen: bool = True,
     ) -> None:
         """This function generates a set of lookup interpolation functions for combustion properties
@@ -280,16 +280,31 @@ class CombustionCantera:
         MR = float(MR)
 
         if self._look_up:
-            # We perform a regression of all our points
-            cp = interpn((self._P_array, self._MR_array), self._CP_array.T, [Pcc, MR])
-            gamma = cp / interpn(
-                (self._P_array, self._MR_array), self._CV_array.T, [Pcc, MR]
-            )
-            R = interpn((self._P_array, self._MR_array), self._R_array.T, [Pcc, MR])
-            T = interpn((self._P_array, self._MR_array), self._T_array.T, [Pcc, MR])
+            # We check if the pressure and mixture ratio are within the present look-up table bounds
+            if Pcc >= self._P_array.min() and Pcc <= self._P_array.max():
 
-            gas = IdealGas(p=Pcc, t=T, gamma=gamma, R=R, cp=cp)
+                if MR >= self._MR_array.min() and MR <= self._MR_array.max():
 
+                    # We perform a regression of all our points
+                    cp = interpn(
+                        (self._P_array, self._MR_array), self._CP_array.T, [Pcc, MR]
+                    )
+                    gamma = cp / interpn(
+                        (self._P_array, self._MR_array), self._CV_array.T, [Pcc, MR]
+                    )
+                    R = interpn(
+                        (self._P_array, self._MR_array), self._R_array.T, [Pcc, MR]
+                    )
+                    T = interpn(
+                        (self._P_array, self._MR_array), self._T_array.T, [Pcc, MR]
+                    )
+
+                    gas = IdealGas(p=Pcc, t=T, gamma=gamma, R=R, cp=cp)
+
+                else:
+                    gas = self.solve_cantera(Pcc=Pcc, MR=MR, T=T, dt=dt, frozen=frozen)
+            else:
+                gas = self.solve_cantera(Pcc=Pcc, MR=MR, T=T, dt=dt, frozen=frozen)
         else:
             gas = self.solve_cantera(Pcc=Pcc, MR=MR, T=T, dt=dt, frozen=frozen)
 
