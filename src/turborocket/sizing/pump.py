@@ -172,8 +172,8 @@ class Barske:
 
         elif diffuser_type == DiffuserType.rectangular:
             # Assume that the diffuser exit dimensions are like this
-            self._d_3 = self._a_3 ** (1 / 2)
-            self._d_4 = self._a_4 ** (1 / 2)
+            self._d_3 = self._a_3 / self._l_2
+            self._d_4 = self._a_4 / self._l_2
             self._l_3 = (self._d_4 - self._d_3) / np.tan(np.deg2rad(self._delta))
 
         # Finally solving for the exit velocity of the diffuser
