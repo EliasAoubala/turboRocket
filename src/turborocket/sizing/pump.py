@@ -1,125 +1,326 @@
 """This file contains the authors objects for the sizing of liquid propellant pumps"""
 
-#from turborocket.fluids.fluids import IncompressibleFluid
+from turborocket.fluids.fluids import IncompressibleFluid
 import numpy as np
-import matplotlib.pyplot as plt
+from enum import Enum
+import pandas as pd
+
+
+class DiffuserType(Enum):
+
+    circular = "Circular"
+    rectangular = "rectangular"
 
 
 class Barske:
-    #This object represents a Partial Emission Pump of a Barske Style for Liquid Propellants
+    """This object represents a Barske Impeller Pump
 
-    def __init__(self, dp_metric: float, M_metric: float, N: float, W_metric: float, v_metric: float, alpha: float):
+    It is used for sizing and efficiency evaluation of the pump under a range of conditions
+    """
 
-        "Converted values"
-        self.H_prime = 3.28084 * ((dp_metric*100000)/(W_metric*9.81)) #ft
-        self.M = M_metric * 2.20462 # lbs/s
-        self.W = W_metric * 0.062428 # lbs/ft3
-        self.Q = self.M/self.W # ft3/s
-        self.G = self.Q * 448.8309375 # GPM
-        self.v = v_metric * 10.764 # ft2/s
-        self.alpha = alpha
-        self.N = N # rpm
-        #self.N_s = (self.N * (self.G) ** 0.5)/(); " rpm, GPM, ft"
+    def __init__(
+        self,
+        dp: float,
+        m_dot: float,
+        N: float,
+    ) -> None:
+        """Constructor for the Barske Impeller Object
 
-        self.size_pump()
+        Args:
+            dp (float): Pressure Head Across the Pump (Pa)
+            m_dot (float): Nominal Mass Flow Rate Through the Pump (kg/s)
+            N (float): Nominal Shaft Speed of the Pump (rad/s)
+        """
+        self._dp = dp
+        self._m_dot = m_dot
+        self._N = N
+        # We also define our conversion parameters
+        self._ms_to_fts = 3.28084
+        self._kgm3_to_lbcuft = 0.062428
+        self._m_to_in = 39.3701
+        self._hp_to_w = 745.7
+        self._g = 9.81  # m/s^2
 
-    def size_pump(self): #Generates geometric parameters for the pump
-        
-        #Inlet Conditions
-        self.v_0 = 12 #ft/s, range of 5 - 12
-        self.d_0 = (183.5 * (self.Q/self.v_0)) ** 0.5 # inch
-        self.d_1 = self.d_0 # inch
+    def size_pump(
+        self,
+        fluid: IncompressibleFluid,
+        l_1: float,
+        l_2: float,
+        v_0: float = 3.65,
+        v_3f: float = 0.85,
+        d_1f: float = 1.1,
+        a_3f: float = 3.5,
+        delta_div: float = 8,
+        diffuser_type: DiffuserType = DiffuserType.circular,
+        psi: float = 0.2,
+    ) -> pd.DataFrame:
+        """This function performs the sizing of the pump, based on the inputs of the user
 
-        #Velocities and Ideal Heads
-        self.u_1 = self.N * self.d_1 * 0.00435 #ft/s
-        self.u_2 = (((self.H_prime*2*32.2) + (self.u_1 ** 2))/2) ** 0.5 #ft/s
+        Args:
+            fluid (IncompressibleFluid): Fluid flowing through the Pump
+            l_1 (float): Blade Axial Length at Impeller Inlet (m)
+            l_2 (float): Blade Axial Length at Impeller Exit (m)
+            v_0 (float, Optional): Impeller Inlet Axial Velocity (m/s) . Defaults to 12 ft/s
+            v_3f (float, Optional): Diffuser Velocity Factor (0.8 - 0.9). Defaults to 0.85.
+            d_1f (float, Optional): Pump Inlet Preswirl Area Expansion Factor. Defaults to 1.1
+            a_3f (float, Optional): Diffuser Expansion Area Factor (3 - 4). Defaults to 3.5.
+            delta_div (float, Optional): Diffuser Full Exit Angle. For a circular diffuser: [8 - 10]. For a square diffuser: [4 - 8]. (Degrees). Defaults to 10 degree.
+            diffuser_type (DiffuserType, Optional): Diffuser Type Enum Object. Defaults to a Circular Diffuser
+            psi (float, Optional): Pressure Head Factor for the Impeller, ranging between 0 and 1. Defaults to 0.2.
 
-        self.H_prime_d = (self.u_2**2)/(2*32.2) # ft
-        self.H_prime_s = (self.u_2 ** 2 - self.u_1 ** 2)/(2*32.2) # ft
+        Returns:
+            pd.DataFrame: DataFrame of Key Geometric Parameters for the Sizing of the Pump
+        """
 
-        #Ideal pressures
-        self.p_prime_s = self.W*(self.u_2**2 - self.u_1**2)/9300 # psi
-        self.p_prime_d = (self.W*self.u_2**2)/9300 # psi
-        self.p_prime = self.p_prime_s + self.p_prime_d # psi
+        # We check if the inlet velocity exceeds recommended guidelines
 
-        #Blade geometry
-        self.d_2 = self.u_2/(0.00435*self.N)
-        self.l_1 = self.d_1*0.25
-        self.l_2 = self.l_1*(self.d_1/self.d_2)
+        if v_0 < 5 / self._ms_to_fts:
+            raise ValueError(
+                f"Inlet Velocity below Recommendation: {v_0*self._ms_to_fts} < 5 ft/s"
+            )
+        elif v_0 > 12 / self._ms_to_fts:
+            raise ValueError(
+                f"Inlet Velocity above Recommendation: {v_0*self._ms_to_fts} > 12 ft/s"
+            )
+        elif l_1 <= 0:
+            raise ValueError(f"Blade Entrance Length must be a positive number")
+        elif l_2 <= 0:
+            raise ValueError(f"Blade Exit Axial Length must be a positive Number")
 
-        #Diffuser geometry
-        self.v_3 = 0.85 * self.u_2 # ft/s
-        self.a_3 = (144*self.M)/(1*self.v_3*self.W) # in^2
-        self.a_4 = self.a_3 * 3.5 # in^2
-        self.d_3 = ((4/np.pi)*self.a_3) ** 0.5 # inch
-        self.d_4 = ((4/np.pi)*self.a_4) ** 0.5 # inch
-        self.delta = 10 # degree
-        self.l_3 =(self.d_4-self.d_3)/np.tan(np.deg2rad(self.delta)) # inch
-        self.v_4 = (self.Q*144)/self.a_4 # ft/s
+        if l_1 < l_2:
+            raise ValueError(f"Axial Blade Shape is unacceptable! l_1 > l_2")
 
-    def get_pump_performance(self, psi: float):
-        self.psi = psi
-        self.H = self.H_prime_s + (self.psi * self.H_prime_d)
-        self.p = self.p_prime_s + (self.psi * self.p_prime_d)
+        # We then check the divergence angle based on the diffuer
+        if diffuser_type == DiffuserType.circular:
+            if delta_div < 8 or delta_div > 10:
+                raise ValueError(
+                    f"Divergence Angle of the Diffuser is outwith recommendation for a Circular Diffuser: 8 < {delta_div} < 10"
+                )
+        elif diffuser_type == DiffuserType.rectangular:
+            if delta_div < 4 or delta_div > 8:
+                raise ValueError(
+                    f"Divergence Angle of the Diffuser outwith recommendation for a Rectangular Diffuser: 4 < {delta_div} < 8"
+                )
 
-        self.H_metric = self.H * 0.3048 # m
-        self.p_metric = self.p * 0.0689476  # bar
+        self._psi = psi
 
-        self.specific_speed = (self.N*(self.G)**0.5)/(self.H**0.75)
+        # We get fluid properties
+        rho = fluid.get_density()
 
-        return self.H_metric, self.p_metric
+        # Defining Inlet Conditions
+        self._v_0 = v_0
+        self._d_0 = 2 * (self._m_dot / (np.pi * rho * self._v_0)) ** (1 / 2)
+        self._d_1 = self._d_0 * d_1f
 
+        self._u_1 = (self._d_1 / 2) * self._N  # m/s
 
-    def get_instantaneous_efficiency(self):
-        self.P_prime = (self.H_prime * self.M)/550
-        self.P = (self.H * self.M)/550
-        self.P_F = 0.6e-6 * (self.W) * (self.v**0.2) * ((self.N/1000)**2.8) * (((2 * (1/np.sin(np.deg2rad(self.alpha)))) * self.d_2**4.6) + (self.l_1 * 9.2 * self.d_1 ** 3.6))
-        self.eta = 1/((self.p_prime/self.p) + (self.P_F/self.P))
+        if self._u_1 * self._ms_to_fts > 150:
+            raise ValueError(
+                f"Inner Blade Speed Exceeds 150 ft/s, slow down blade by either decreasing inlet velocity or diameter. {self._u_1* self._ms_to_fts} > 150 ft/s"
+            )
 
-    def get_sweep_efficiency(self, N_start: float, N_end: float, generate_graph: bool):
-        #pump performance must be run first
-        rpm_step = 1000
-        rpm_values = np.arange(N_start, N_end + rpm_step, rpm_step)
-        
-        sweep_u_1 = []
-        sweep_u_2 = []
-        sweep_p = []
-        sweep_p_prime = []
-        sweep_P_F = []
-        sweep_H = []
-        sweep_Q = []
-        sweep_P = []
-        sweep_eta = []
+        # Evaluates for the head of the pump and associated required exit velocity
+        self._h = self._dp / (rho * self._g)  # m
 
-        for rpm in rpm_values:
-            new_u_1 = 0.00435 * self.d_1 * rpm; sweep_u_1.append(new_u_1)
-            new_u_2 = 0.00435 * self.d_2 * rpm; sweep_u_2.append(new_u_2)
-            new_p = (self.W/9300) * ((1 + self.psi) * new_u_2 ** 2 - new_u_1 ** 2); sweep_p.append(new_p)
-            new_p_prime = (self.W / 9300) * ((2 * new_u_2 ** 2) - new_u_1 ** 2); sweep_p_prime.append(new_p_prime)
-            new_P_F = 0.6e-6 * (self.W) * (self.v**0.2) * ((rpm/1000)**2.8) * (((2 * (1/np.sin(np.deg2rad(self.alpha)))) * self.d_2**4.6) + (self.l_1 * 9.2 * self.d_1 ** 3.6))
-            sweep_P_F.append(new_P_F)
-            new_H = (144*new_p)/self.W; sweep_H.append(new_H)
-            new_Q = (((self.specific_speed*new_H**0.75)/rpm)**2) * 0.002228010407594; sweep_Q.append(new_Q)
-            new_P = 0.262 * new_p * new_Q; sweep_P.append(new_P)
-            new_eta = 1/((new_p_prime/new_p) + (new_P_F/new_P)); sweep_eta.append(new_eta)
+        self._u_2 = ((2 * self._g * self._h + self._u_1**2) / (1 + psi)) ** (1 / 2)
+        self._d_2 = 2 * self._u_2 / (self._N)
 
+        # Checking if the impeller Axial Lengths are within guidelines
+        self._l_1 = l_1
+        self._l_2 = l_2
 
-        if generate_graph:
-            plt.figure(figsize=(8, 5))
-            plt.plot(rpm_values, sweep_eta, marker='o', linestyle='-', color='blue', label='Pump Efficiency')
-            plt.xlabel('RPM')
-            plt.ylabel('Efficiency (%)')
-            plt.title('Pump Efficiency vs RPM')
-            plt.grid(True)
-            plt.legend()
-            plt.tight_layout()
-            plt.show()
+        if self._l_1 < 0.25 * self._d_1:
+            raise ValueError(
+                f"Impeller Inlet Blade Axial Width is below recommended guidelines for this design point: {self._l_1} < (1/4) {self._d_1}"
+            )
 
-        #return rpm_values, sweep_eta
-        return sweep_eta
+        elif self._l_2 < self._l_1 * (self._d_1 / self._d_2):
+            raise ValueError(
+                f"Impeller Exit Blade Axial Width is below recommended Guideliness for this design point: {self._l_2} < {self._l_1*(self._d_1/self._d_2)}"
+            )
 
+        # We evaluate for our absolute and relative exit velocities, assuming no pre-swirl and an exit angle of 90 degrees.
+        self._v_1 = self._m_dot / (rho * self._l_1 * np.pi * self._d_1)
+        self._w_2 = self._m_dot / (rho * self._l_2 * np.pi * self._d_2)
 
-#EXAMPLE CODE
-pump = Barske(35, 0.25, 24000, 786, 1.462e-6, 80) #initialise pump model
-pump.get_pump_performance(0.2) #generate performance figures for given psi value
-pump_efficiency = pump.get_sweep_efficiency(1000, 50000, True) #generate efficiency plot for given psi value
+        # We can evluate for the axial and radial clearance
+        self._c_1 = self._d_2 / 100
+
+        if self._c_1 * self._m_to_in > 0.04:
+            self._c_1 = 0.04 / self._m_to_in
+
+        self._c_2 = self._d_2 * 0.05
+
+        # We check if the exit blade length
+        if self._l_2 < 3 * self._c_1:
+            raise ValueError(
+                f"Axial Blade Length at Exit is too low when compared to the axial clearance of the Impeller. {l_2} > {3*self._c_1}"
+            )
+
+        # Now Defining our Diffuser Parameters
+        self._v_3 = v_3f * self._u_2
+        self._a_3 = self._m_dot / (rho * self._v_3)
+        self._a_4 = self._a_3 * a_3f
+
+        # We figure out what the dimensions of the diffuser are:
+        self._delta = delta_div
+
+        if diffuser_type == DiffuserType.circular:
+            self._d_3 = ((4 / np.pi) * self._a_3) ** 0.5
+            self._d_4 = ((4 / np.pi) * self._a_4) ** 0.5
+            self._l_3 = (self._d_4 - self._d_3) / np.tan(np.deg2rad(self._delta))
+
+        elif diffuser_type == DiffuserType.rectangular:
+            # Assume that the diffuser exit dimensions are like this
+            self._d_3 = self._a_3 / self._l_2
+            self._d_4 = self._a_4 / self._l_2
+            self._l_3 = (self._d_4 - self._d_3) / np.tan(np.deg2rad(self._delta))
+
+        # Finally solving for the exit velocity of the diffuser
+        self.v_4 = (self._m_dot / rho) / self._a_4
+
+        # We can create our dataframe
+
+        data = {
+            "Eye Diameter - d_0 (mm)": [self._d_0 * 1e3],
+            "Inlet Diameter - d_1 (mm)": [self._d_1 * 1e3],
+            "Exit Diameter - d_2 (mm)": [self._d_2 * 1e3],
+            "Entrance Axial Blade Length - l_1 (mm)": [self._l_1 * 1e3],
+            "Exit Axial Blade Legnth - l_2 (mm)": [self._l_2 * 1e3],
+            "Axial Clearance - c_1 (mm)": [self._c_1 * 1e3],
+            "Radial Clearance - c_2 (mm)": [self._c_2 * 1e3],
+            "Diffuser Type": [diffuser_type],
+            "Diffuser Throat - d_3 (mm)": [self._d_3 * 1e3],
+            "Diffuser Exit - d_4 (mm)": [self._d_4 * 1e3],
+            "Diffuser Length - L (mm)": [self._l_3 * 1e3],
+            "Inlet Eye Velocity - v_o (m/s)": [self._v_0],
+            "Impeller Inlet Velocity - v_1 (m/s)": [self._v_1],
+            "Relative Exit Velocity - w_2 (m/s)": [self._w_2],
+        }
+
+        df = pd.DataFrame(data=data)
+
+        return df
+
+    def get_pump_performance(
+        self,
+        fluid: IncompressibleFluid,
+        m_dot: float,
+        psi: float | None = None,
+        N: float | None = None,
+    ) -> pd.DataFrame:
+        """Function that solves for the pumps performance metrics, namely the expected pressure rise, efficiency and required pump power
+
+        Args:
+            fluid (IncompressibleFluid): Inlet Fluid Object of the Pump
+            m_dot (float): Mass Flow Rate Through Pump.
+            psi (float | None, optional): Pressure Factor of the pump. Defaults to Parameter Defined During Sizing.
+            N (float | None, optional): Shaft Speed of the Pump (rad/s). Defaults to design shaft speed.
+
+        Returns:
+            pd.Dataframe: Dataframe of Pump Performance Metrics
+        """
+
+        if psi is None:
+            psi = self._psi
+
+        if N is None:
+            N = self._N
+
+        # Getting our fluid density
+        rho = fluid.get_density()
+
+        # Solving for the pressure head and pressure rised
+        H = self.get_head(psi=psi, N=N)
+        dp = H * rho * self._g
+
+        # We then get the efficiency of the pump
+        eta = self.get_instantaneous_efficiency(m_dot=m_dot, fluid=fluid, psi=psi, N=N)
+
+        # We can then solve for our required shaft power
+        pw_hyd = dp * m_dot / rho
+        pw_shaft = (dp * m_dot / rho) / eta
+
+        # From here, we can assemble our dictionary accordingly
+        df = pd.DataFrame(
+            data={
+                "Head Rise (m)": [H],
+                "Head Rise (Bar)": [dp / 1e5],
+                "Efficiency (%)": [eta * 1e2],
+                "Hydraulic Power (kW)": [pw_hyd / 1e3],
+                "Required Shaft Power (kW)": [pw_shaft / 1e3],
+            }
+        )
+
+        return df
+
+    def get_head(
+        self,
+        psi: float,
+        N: float,
+    ) -> float:
+        """Function that solves for the head rise in the pump
+
+        Args:
+            psi (float): Pressure Factor of the Pump (n.d)
+            N (float): Shaft Speed of the Pump (rad/s)
+
+        Returns:
+            float: Head Rise across the impeller of the pump (m)
+        """
+        # We firstly need to evaluate for the blade speeds at the tip and at the eye inlet
+        u_2 = (self._d_2 / 2) * N
+        u_1 = (self._d_1 / 2) * N
+
+        H = (1 / (2 * self._g)) * ((1 + psi) * u_2**2 - u_1**2)
+
+        return H
+
+    def get_instantaneous_efficiency(
+        self,
+        m_dot: float,
+        fluid: IncompressibleFluid,
+        psi: float | None = None,
+        N: float | None = None,
+    ):
+        """Function for evaluating the pump efficiency
+
+        Args:
+            m_dot (float): Mass Flow Rate Through the Pump (kg/s)
+            fluid (IncompressibleFluid): Inlet fluid object of the pump
+            psi (float | None, optional): Pressure Factor of the Impeller. Defaults to Parameter Defined During Sizing.
+            N (float | None, optional): Shaft Speed of the Pump (rad/s). Defaults to design shaft speed.
+        """
+        # Getting our fluid properties
+        rho = fluid.get_density()
+
+        # Calculating our theoretical and actual pressure heads
+        p_prime = self.get_head(psi=1, N=N)
+        p = self.get_head(psi=psi, N=N)
+
+        # Calculating our powers associated with the system
+        Q = m_dot / rho
+        pw_prime = p_prime * rho * self._g * Q
+        pw = p * rho * self._g * Q
+
+        # We now need to convert our key parameters into imperial for the friction calculation
+        v = (fluid.get_viscosity() / rho) * self._ms_to_fts**2
+        rho = rho * self._kgm3_to_lbcuft
+        N = N * 60 / (2 * np.pi)
+        d_2 = self._d_2 * self._m_to_in
+        d_1 = self._d_1 * self._m_to_in
+        l_1 = self._l_1 * self._m_to_in
+
+        alpha_1 = np.arctan((self._d_2 / 2 - self._d_1 / 2) / (self._l_1 - self._l_2))
+
+        pf = (
+            0.6e-6
+            * (rho)
+            * (v**0.2)
+            * ((N / 1000) ** 2.8)
+            * ((((1 / np.sin(alpha_1)) + 1) * d_2**4.6) + (l_1 * 9.2 * d_1**3.6))
+        ) * self._hp_to_w
+
+        eta = pw / (pw_prime + pf)
+
+        return eta

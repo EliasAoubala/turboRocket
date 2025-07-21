@@ -88,15 +88,15 @@ class TurbineLoader:
 
     def __init__(
         self,
-        delta_b: float | None = None,
+        u_co_nom: float | None = None,
         a_rat: float | None = None,
         D_m: float | None = None,
-        eta: float | None = None,
+        eta_nom: float | None = None,
     ):
-        self._delta_b = delta_b
+        self._u_co_nom = u_co_nom
         self._a_rat = a_rat
         self._D_m = D_m
-        self._eta = eta
+        self._eta_nom = eta_nom
 
         return
 
@@ -106,13 +106,22 @@ class PumpLoader:
 
     def __init__(
         self,
-        D_nom: float | None = None,
-        Q_nom: float | None = None,
-        eta_nom: float | None = None,
+        D_1: float | None = None,
+        D_2: float | None = None,
+        D_3: float | None = None,
+        C_c: float | None = None,
+        psi: float | None = None,
+        eta_bep: float | None = None,
+        N_bep: float | None = None,
     ):
-        self._D_nom = D_nom
-        self._Q_nom = Q_nom
-        self._eta_nom = eta_nom
+        self._D_1 = D_1
+        self._D_2 = D_2
+        self._D_3 = D_3
+
+        self._C_c = C_c
+        self._psi = psi
+        self._eta_bep = eta_bep
+        self._N_bep = N_bep * (2 * np.pi) / 60  # Converting from rad/s to rpm
 
         return
 
@@ -281,24 +290,32 @@ class TransientLoader:
 
     def pump_definition(
         self,
-        D_nom: float | None = None,
-        Q_nom: float | None = None,
-        eta_nom: float | None = None,
+        D_1: float | None = None,
+        D_2: float | None = None,
+        D_3: float | None = None,
+        C_c: float | None = None,
+        psi: float | None = None,
+        eta_bep: float | None = None,
+        N_bep: float | None = None,
     ) -> PumpLoader:
 
-        pump_obj = PumpLoader(D_nom=D_nom, Q_nom=Q_nom, eta_nom=eta_nom)
+        pump_obj = PumpLoader(
+            D_1=D_1, D_2=D_2, D_3=D_3, C_c=C_c, psi=psi, eta_bep=eta_bep, N_bep=N_bep
+        )
 
         return pump_obj
 
     def turbine_definition(
         self,
-        delta_b: float | None = None,
+        u_co_nom: float | None = None,
         a_rat: float | None = None,
         D_m: float | None = None,
-        eta: float | None = None,
+        eta_nom: float | None = None,
     ) -> TurbineLoader:
 
-        turbine_obj = TurbineLoader(delta_b=delta_b, a_rat=a_rat, D_m=D_m, eta=eta)
+        turbine_obj = TurbineLoader(
+            u_co_nom=u_co_nom, a_rat=a_rat, D_m=D_m, eta_nom=eta_nom
+        )
 
         return turbine_obj
 

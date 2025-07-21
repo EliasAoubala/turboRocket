@@ -207,13 +207,42 @@ class IdealGas:
         """
         M_a = inv_M_star(gamma=self._gamma, M_star=M_star)
 
-        print(f"Mach Number: {M_a}")
-
         p_rat = (1 + ((self._gamma - 1) / 2) * M_a**2) ** (
             self._gamma / (self._gamma - 1)
         )
 
         return p_rat ** (-1)
+
+    def get_c_star(self) -> float:
+        """This function gets the characteristic velocity of the gas
+
+        Assumption:
+            - The State of the Gas is at stagnation
+
+        Returns:
+            float: Characteristic Velocity of the Gas (m/s)
+        """
+
+        R = self.get_R()
+        T = self.get_temperature()
+        gamma = self.get_gamma()
+
+        c_star = np.sqrt(R * T / (gamma)) * np.power(
+            2 / (gamma + 1), -(gamma + 1) / (2 * (gamma - 1))
+        )
+
+        return c_star
+
+    def set_pressure(self, p: float) -> None:
+        """This function sets the pressure of the ideal gas object
+
+        Args:
+            p (float): Pressure of the Gas (Pa)
+
+        """
+        self._p = p
+
+        return
 
 
 class IncompressibleFluid:

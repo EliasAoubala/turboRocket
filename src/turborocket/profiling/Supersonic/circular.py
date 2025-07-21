@@ -32,6 +32,7 @@ def M_star(gamma, M):
 
     return crit_vel_rat
 
+
 def inv_M_star(gamma, M_star):
     """
     This function computes the mach number based on the critical velocity ratio.
@@ -40,10 +41,10 @@ def inv_M_star(gamma, M_star):
         gamma (float): Specific Heat Ratio
         M_star (float): Crtical Velocity ratio
     """
-    
-    M = M_star / ( ((gamma + 1)/2)  -  ((gamma - 1)/2)*M_star**2 )**(1/2)
-    
+    M = M_star / (((gamma + 1) / 2) - ((gamma - 1) / 2) * M_star**2) ** (1 / 2)
+
     return M
+
 
 def prandtl_meyer(gamma, crit_vel_rat):
     """

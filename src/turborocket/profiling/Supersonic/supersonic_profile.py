@@ -25,9 +25,13 @@ from turborocket.fluids.fluids import IdealGas
 from turborocket.profiling.Supersonic.fixed_edge import get_m_e
 
 import numpy as np
+import math
 import matplotlib.pyplot as plt
 
 import pandas as pd
+
+from scipy.interpolate import interp1d
+from scipy.optimize import minimize, Bounds
 
 
 class SupersonicProfile:
@@ -325,6 +329,339 @@ class SupersonicProfile:
         self._x_u_array = -self._R_u_star * np.sin(alpha_u_array)
         self._y_u_array = self._R_u_star * np.cos(alpha_u_array)
 
+    def generate_surface_maps(self) -> None:
+        """This function generates the surface maps for the s_position of the upper and lower surface of the blade profiles
+
+        - We calculate the straight line distance between the points
+        """
+        ########## Upper Surface ##########
+
+        # We create our upper surface arrays
+        df_upper = self.generate_upper_xy()
+
+        # We get the start points
+        first_point = df_upper.iloc[0]
+
+        df_upper["s"] = ""
+
+        # Setting the Initial Position
+        df_upper.loc[0, "s"] = 0
+
+        for index, row in df_upper.iterrows():
+
+            if index == 0:
+                continue
+
+            x_1_u = row["x"]
+            y_1_u = row["y"]
+
+            s_0_u = df_upper.loc[index - 1, "s"]
+            x_0_u = df_upper.loc[index - 1, "x"]
+            y_0_u = df_upper.loc[index - 1, "y"]
+
+            df_upper.loc[index, "s"] = s_0_u + np.sqrt(
+                (x_0_u - x_1_u) ** 2 + (y_0_u - y_1_u) ** 2
+            )
+
+        ########## Lower Surface ##########
+
+        # We create our upper surface arrays
+        df_lower = self.generate_lower_xy()
+
+        # We get the start points
+        first_point = df_lower.iloc[0]
+
+        df_lower["s"] = ""
+
+        # Setting the Initial Position
+        df_lower.loc[0, "s"] = 0
+
+        for index, row in df_lower.iterrows():
+
+            if index == 0:
+                continue
+
+            x_1_l = row["x"]
+            y_1_l = row["y"]
+
+            s_0_l = df_lower.loc[index - 1, "s"]
+            x_0_l = df_lower.loc[index - 1, "x"]
+            y_0_l = df_lower.loc[index - 1, "y"]
+
+            df_lower.loc[index, "s"] = s_0_l + np.sqrt(
+                (x_0_l - x_1_l) ** 2 + (y_0_l - y_1_l) ** 2
+            )
+
+        # We can now normalise our "s" array from 0 to 1.
+        df_upper["s"] = df_upper["s"] / df_upper["s"].max()
+        df_lower["s"] = df_lower["s"] / df_lower["s"].max()
+
+        # We can now prepare our interpolation arrays for the x and y positions of the upper and lower surface using linear interpolation.
+        self._s_x_u = interp1d(df_upper["s"], df_upper["x"], kind="linear")
+        self._s_y_u = interp1d(df_upper["s"], df_upper["y"], kind="linear")
+
+        # We can now do the same process for the lower surface
+        self._s_x_l = interp1d(df_lower["s"], df_lower["x"], kind="linear")
+        self._s_y_l = interp1d(df_lower["s"], df_lower["y"], kind="linear")
+
+        return
+
+    def get_upper_surface_position(self, s_u: float) -> tuple:
+        """Gets the co-ordinates of the upper surface position
+
+        Args:
+            s_u (float): Streamline Length along upper surface [0 - 1]. 0 is LE, 1 is TE
+
+        Returns:
+            tuple: x,y position of the surface
+        """
+        # We can get the upper surface position
+        x_u = self._s_x_u(s_u)
+        y_u = self._s_y_u(s_u)
+
+        return (x_u, y_u)
+
+    def get_lower_surface_position(self, s_l: float) -> tuple:
+        """Gets the co-ordinates of the lower surface position
+
+        Args:
+            s_l (float): Streamline Length along lower surface [0 - 1]. 0 is LE, 1 is TE
+
+        Returns:
+            tuple: x,y position of the surface
+        """
+        # We can get the lower surface position
+        x_l = self._s_x_l(s_l)
+        y_l = self._s_y_l(s_l)
+
+        return (x_l, y_l)
+
+    def get_distance_upper(
+        self, s_u: float, s_l: float, shift_flag: bool = False
+    ) -> float:
+        """Gets the distance between two points on the upper lower surface
+
+        Args:
+            s_u (float): Position along the Lower Surface [0 - 1]. 0 is LE, 1 is TE
+            s_l (float): Position along the Lower Surface [0 - 1]. 0 is LE, 1 is TE
+            shift_flag (bool): Whether we shift the position of the y for matching.
+
+        Returns:
+            float: Distance between the upper and lower surface blade profiles
+        """
+        x_u, y_u = self.get_upper_surface_position(s_u=s_u)
+        x_l, y_l = self.get_lower_surface_position(s_l=s_l)
+
+        if shift_flag:
+            y_l += self._g_star * self._sf
+
+        dl = ((x_u - x_l) ** 2 + (y_u - y_l) ** 2) ** (1 / 2)
+
+        return dl
+
+    def get_distance_lower(
+        self, s_l: float, s_u: float, shift_flag: bool = False
+    ) -> float:
+        """Gets the distance between two points on the upper lower surface
+
+        Args:
+            s_u (float): Position along the Lower Surface [0 - 1]. 0 is LE, 1 is TE
+            s_l (float): Position along the Lower Surface [0 - 1]. 0 is LE, 1 is TE
+            shift_flag (bool): Whether we shift the position of the y for matching.
+
+        Returns:
+            float: Distance between the upper and lower surface blade profiles
+        """
+        x_u, y_u = self.get_upper_surface_position(s_u=s_u)
+        x_l, y_l = self.get_lower_surface_position(s_l=s_l)
+
+        if shift_flag:
+            y_l += self._g_star * self._sf
+
+        dl = ((x_u - x_l) ** 2 + (y_u - y_l) ** 2) ** (1 / 2)
+
+        return dl
+
+    def fit_surface_circle(
+        self, s_u: float, s_l: float, offset: float = 0
+    ) -> dict[str, float]:
+        """This function fits a cirle based on the upper and lower surface points
+
+        Args:
+            s_u (float): Upper Surface Point
+            s_l (float): Lower Surface Point
+            offset (float, optional): Offset for lower surface positioning
+
+        Returns:
+            dict[str, float]: Dictionary of the camber center co-ordinates and the spacing
+        """
+        if s_l >= 0.999 or s_u >= 0.999:
+            ds = -0.001
+        else:
+            ds = 0.001
+
+        # We get the upper surface position and gradient
+        x_u, y_u = self.get_upper_surface_position(s_u=s_u)
+        x_up, y_up = self.get_upper_surface_position(s_u=s_u + ds)
+
+        dy_dx_u = (y_up - y_u) / (x_up - x_u)
+
+        # We get the lower surface position and gradient
+        x_l, y_l = self.get_lower_surface_position(s_l=s_l)
+        x_lp, y_lp = self.get_lower_surface_position(s_l=s_l + ds)
+
+        # y_l += offset
+        # y_lp += offset
+
+        dy_dx_l = (y_lp - y_l) / (x_lp - x_l)
+
+        # We can now convert this into an angle
+        phi_u = math.atan2(-1, dy_dx_u)
+        phi_l = math.atan2(-1, dy_dx_l)
+
+        # We can then solve for our radius
+        r = (x_u - x_l) / (np.cos(phi_u) + np.cos(phi_l))
+
+        # We can then solve for our centroid accordingly
+        x_0 = x_l + r * np.cos(phi_l)
+        y_0 = y_l + r * np.sin(phi_l)
+
+        dic = {"x": x_0, "y": y_0, "dl": 2 * r}
+
+        return dic
+
+    def error_circle(self, s_u: float, s_l: float) -> float:
+        """This function gets the radius error between two points on a curve when fitting a circle
+
+        Args:
+            s_u (float): Upper Position
+            s_l (float): Lower Position
+
+        Returns:
+            float: Error in Radii
+        """
+        if s_l >= 0.999 or s_u >= 0.999:
+            ds = -0.001
+        else:
+            ds = 0.001
+
+        # We get the upper surface position and gradient
+        x_u, y_u = self.get_upper_surface_position(s_u=s_u)
+        x_up, y_up = self.get_upper_surface_position(s_u=s_u + ds)
+
+        dy_dx_u = (y_up - y_u) / (x_up - x_u)
+
+        # We get the lower surface position and gradient
+        x_l, y_l = self.get_lower_surface_position(s_l=s_l)
+        x_lp, y_lp = self.get_lower_surface_position(s_l=s_l + ds)
+
+        # y_l += offset
+        # y_lp += offset
+
+        dy_dx_l = (y_lp - y_l) / (x_lp - x_l)
+
+        # We can now convert this into an angle
+        phi_u = math.atan2(-1, dy_dx_u)
+        phi_l = math.atan2(-1, dy_dx_l)
+
+        # We can then solve for our radii
+        r_x = (x_u - x_l) / (np.cos(phi_u) + np.cos(phi_l))
+        r_y = (y_u - y_l) / (np.sin(phi_u) + np.sin(phi_l))
+
+        return abs(r_x - r_y)
+
+    def camber_position(self, s_l: float) -> dict[str, float]:
+        """Gets the location of the camber Line
+
+        Args:
+            s_l (float): Surface Position on lower surface
+
+        Returns:
+            dict[str, float]: Dictionary of the x and y position of the camber, along with the thickness at his point
+        """
+
+        # We get the upper surface position
+        bnds = Bounds(lb=0, ub=1)
+        res = minimize(
+            self.error_circle,
+            s_l,
+            args=s_l,
+            bounds=bnds,
+        )
+
+        s_u = res.x
+
+        # We get the tangent location on the upper surface
+        x_u, y_u = self.get_upper_surface_position(s_u=s_u)
+        x_l, y_l = self.get_lower_surface_position(s_l=s_l)
+
+        # We can get the mid point between these two points accordingly.
+        dic = self.fit_surface_circle(s_u=s_u, s_l=s_l)
+
+        dic["x_1"] = x_u
+        dic["y_1"] = y_u
+
+        dic["x_2"] = x_l
+        dic["y_2"] = y_l
+
+        return dic
+
+    def passage_position(self, s_l: float) -> dict[str, float]:
+        """Gets the location of the passage center line for machining
+
+        Args:
+            s_l (float): Surface Position on lower surface
+
+        Returns:
+            dict[str, float]: Dictionary of the x and y position of the camber, along with the thickness at his point
+        """
+
+        # We get the upper surface position
+        bnds = Bounds(lb=0, ub=1)
+        res = minimize(
+            self.get_distance_upper,
+            s_l * 0.8,
+            args=(s_l, True),
+            bounds=bnds,
+            method="Nelder-Mead",
+        )
+
+        s_u = res.x
+
+        # We then need to get the x and y positions of the upper and lower surfaces
+        x_u, y_u = self.get_upper_surface_position(s_u=s_u)
+
+        x_l, y_l = self.get_lower_surface_position(s_l=s_l)
+
+        y_l += self._g_star * self._sf
+
+        dic = {}
+
+        dic["x_1"] = x_u
+        dic["y_1"] = y_u
+
+        dic["x_2"] = x_l
+        dic["y_2"] = y_l
+
+        return dic
+
+    def get_passage_spacing(self) -> float:
+        """This function evaluates for the blade Passage spacing for machining
+
+        Returns:
+            float: Blade Passage Spacing
+        """
+        up = self.get_upper_surface_position(s_u=0.5)
+        down = self.get_lower_surface_position(s_l=0.5)
+
+        y_u = (up / self._sf - self._g_star)[1]
+
+        y_d = (down / self._sf)[1]
+
+        s = y_d - y_u
+
+        return s * self._sf
+
     def generate_blade(self):
 
         # Now Shifting all our array points for the upper blade profiling accordingly
@@ -461,6 +798,82 @@ class SupersonicProfile:
         ax.legend()
         plt.show()
 
+    def generate_upper_xy(self) -> pd.DataFrame:
+        """Function that generates an x-y data frame of the co-ordinates of the upper surface
+
+        Returns:
+            pd.DataFrame: Data frame of profile co-ordinates of the Upper Surface
+        """
+
+        # We simply need to create a master x-array and y-array, create a pandas dataframe, then export as csv
+        x_array = np.array([])
+        y_array = np.array([])
+        z_array = np.array([])
+
+        # We plot the Leading Edge Array,
+        x_array = np.append(x_array, self._x_i_line_sf[::-1])
+        y_array = np.append(y_array, self._y_i_line_sf[::-1])
+
+        # The then go to the inlet upper Transition
+        x_array = np.append(x_array, (self._xlkt_iu_sf)[-2:1:-1])
+        y_array = np.append(y_array, (self._ylkt_iu_sf)[-2:1:-1])
+
+        # # We then do the inlet Upper Circular element
+        x_array = np.append(x_array, self._x_u_array_sf)
+        y_array = np.append(y_array, self._y_u_array_sf)
+
+        # # We then do the outlet Upper Transition
+        x_array = np.append(x_array, self._xlkt_ou_sf[1:-1])
+        y_array = np.append(y_array, self._ylkt_ou_sf[1:-1])
+
+        # # We plote the Trailing Edge Array,
+        x_array = np.append(x_array, self._x_o_line_sf)
+        y_array = np.append(y_array, self._y_o_line_sf)
+
+        z_array = np.zeros(x_array.size)
+
+        # We need to center in the y_axis- to do this, we will get the maximum and minimum value for the y, half it and shift accordingly.
+
+        df = pd.DataFrame(data={"x": x_array, "y": y_array, "z": z_array})
+
+        return df
+
+    def generate_lower_xy(self) -> pd.DataFrame:
+        """Function that generates an x-y data frame of the co-ordinates of the lower surface
+
+        Returns:
+            pd.DataFrame: Data frame of profile co-ordinates of the Lower Surface.
+        """
+        # We simply need to create a master x-array and y-array, create a pandas dataframe, then export as csv
+        x_array = np.array([])
+        y_array = np.array([])
+        z_array = np.array([])
+
+        # # # We then do the outlet lower transition
+        x_array = np.append(x_array, self._xlkt_ol_sf[-1:1:-1])
+        y_array = np.append(y_array, self._ylkt_ol_sf[-1:1:-1])
+
+        # # We then do the lower circular element
+        x_array = np.append(x_array, (self._x_l_array_sf)[::-1])
+        y_array = np.append(y_array, (self._y_l_array_sf)[::-1])
+
+        # # We then do the inlet lower transition element
+        x_array = np.append(x_array, (self._xlkt_il_sf)[1:-2])
+        y_array = np.append(y_array, (self._ylkt_il_sf)[1:-2])
+
+        x_array = np.append(x_array, self._x_i_line_sf[-1])
+        y_array = np.append(y_array, self._y_i_line_sf[-1])
+
+        z_array = np.zeros(x_array.size)
+
+        # We need to center in the y_axis- to do this, we will get the maximum and minimum value for the y, half it and shift accordingly.
+
+        df = pd.DataFrame(
+            data={"x": x_array[::-1], "y": y_array[::-1], "z": z_array[::-1]}
+        )
+
+        return df
+
     def generate_xy(self) -> pd.DataFrame:
         """Function that generates an x-y data frame of the co-ordinates of the turbine, that can be either plotted or used accordingly.
 
@@ -478,8 +891,8 @@ class SupersonicProfile:
         y_array = np.append(y_array, self._y_i_line_sf[::-1])
 
         # The then go to the inlet upper Transition
-        x_array = np.append(x_array, (self._xlkt_iu_sf)[-2::-1])
-        y_array = np.append(y_array, (self._ylkt_iu_sf)[-2::-1])
+        x_array = np.append(x_array, (self._xlkt_iu_sf)[-2:1:-1])
+        y_array = np.append(y_array, (self._ylkt_iu_sf)[-2:1:-1])
 
         # # We then do the inlet Upper Circular element
         x_array = np.append(x_array, self._x_u_array_sf)
@@ -494,8 +907,8 @@ class SupersonicProfile:
         y_array = np.append(y_array, self._y_o_line_sf)
 
         # # # We then do the outlet lower transition
-        x_array = np.append(x_array, self._xlkt_ol_sf[-2::-1])
-        y_array = np.append(y_array, self._ylkt_ol_sf[-2::-1])
+        x_array = np.append(x_array, self._xlkt_ol_sf[-2:1:-1])
+        y_array = np.append(y_array, self._ylkt_ol_sf[-2:1:-1])
 
         # # We then do the lower circular element
         x_array = np.append(x_array, (self._x_l_array_sf)[::-1])
@@ -505,7 +918,13 @@ class SupersonicProfile:
         x_array = np.append(x_array, (self._xlkt_il_sf)[1:-2])
         y_array = np.append(y_array, (self._ylkt_il_sf)[1:-2])
 
+        x_array = np.append(x_array, self._x_i_line_sf[-1])
+        y_array = np.append(y_array, self._y_i_line_sf[-1])
+
         z_array = np.zeros(x_array.size)
+
+        # We need to center in the y_axis- to do this, we will get the maximum and minimum value for the y, half it and shift accordingly.
+        y_array = y_array - y_array.min() - 0.5 * (y_array.max() - y_array.min())
 
         df = pd.DataFrame(data={"x": x_array * 1e3, "y": y_array * 1e3, "z": z_array})
 
@@ -597,6 +1016,8 @@ class SupersonicProfile:
         Args:
             sf (float): Scale Factor for the Geometry
         """
+
+        self._sf = sf
 
         self._x_l_array_sf = self._x_l_array * sf
         self._y_l_array_sf = self._y_l_array * sf
@@ -819,10 +1240,10 @@ class SymmetricFiniteEdge(SupersonicProfile):
         # We can then generate our scaled components based on the distances fromt he last points.
         b_normal = self._x_o_line[-1] - self._x_i_line[-1]
 
-        sf = self._b / b_normal
+        self._sf = self._b / b_normal
 
         # We can scale accordingly for both the x and y axis for all the key dimensions
-        self.scale_coords(sf=sf)
+        self.scale_coords(sf=self._sf)
 
         # We can finally return a dictionary containing the key Properties of the turbine
         dic = {
@@ -833,8 +1254,15 @@ class SymmetricFiniteEdge(SupersonicProfile):
 
         return dic
 
-    def generate_finite_edge(self) -> None:
-        """This function generates the finite leading and trailing edges for the turbine"""
+    def generate_finite_edge(self, N: int = 100) -> None:
+        """This function generates a finite leading edge for the Turbine
+
+        Args:
+            N (int, optional): Number of Points to discretise on each line segment. Defaults to 100.
+
+        Raises:
+            ValueError: Leading Edge Angle is Protruding
+        """
 
         # We need to figure out what the blade thickness is
         self._t = self._t_g_rat * self._g_star
@@ -864,26 +1292,31 @@ class SymmetricFiniteEdge(SupersonicProfile):
             self._dy_edge = self._dx_edge * np.tan(self._beta_i)
 
         if append_flag:
-            # We can now insert out corner point to the arrays
-            self._x_i_line = np.insert(
-                self._x_i_line, 1, self._x_i_line[-1] + self._dx_edge
+            # We can generate our intersection points
+
+            x_i_new = self._x_i_line[-1] + self._dx_edge
+            y_i_new = self._y_i_line[-1] + self._dy_edge
+
+            self._x_i_line = np.append(
+                np.linspace(self._x_i_line[0], x_i_new, N),
+                np.linspace(x_i_new, self._x_i_line[-1], N)[1:],
+            )
+            self._y_i_line = np.append(
+                np.linspace(self._y_i_line[0], y_i_new, N),
+                np.linspace(y_i_new, self._y_i_line[-1] - self._t, N)[1:],
             )
 
-            self._y_i_line = np.insert(
-                self._y_i_line, 1, self._y_i_line[-1] + self._dy_edge
+            x_o_new = self._x_o_line[-1] - self._dx_edge
+            y_o_new = self._y_o_line[-1] + self._dy_edge
+
+            self._x_o_line = np.append(
+                np.linspace(self._x_o_line[0], x_o_new, N),
+                np.linspace(x_o_new, self._x_o_line[-1], N)[1:],
             )
-
-            self._y_i_line[-1] -= self._t
-
-            self._x_o_line = np.insert(
-                self._x_o_line, 1, self._x_o_line[-1] - self._dx_edge
+            self._y_o_line = np.append(
+                np.linspace(self._y_o_line[0], y_o_new, N),
+                np.linspace(y_o_new, self._y_o_line[-1] - self._t, N)[1:],
             )
-
-            self._y_o_line = np.insert(
-                self._y_o_line, 1, (self._y_o_line[-1] + self._dy_edge)
-            )
-
-            self._y_o_line[-1] -= self._t
 
         # Update Leading Edge Thickness
         self._g_star += self._t

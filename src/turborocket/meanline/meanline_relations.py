@@ -271,8 +271,8 @@ class TurbineStageDesign:
             List[float]: Rotor Diameters [D_hub, D_tip] , (m)
         """
 
-        self._d_hub = self._d_mean - self._sb / 2
-        self._d_tip = self._d_mean + self._sb / 2
+        self._d_hub = self._d_mean - self._sb
+        self._d_tip = self._d_mean + self._sb
 
         return [self._d_hub, self._d_tip]
 
