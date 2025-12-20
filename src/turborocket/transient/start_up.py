@@ -120,12 +120,40 @@ class CombustionChamber:
 
         return pcc / c_star
 
-    def size_system(self, m_dot: float, eta_c: float = 0.8) -> dict:
+    def area_rat(self,
+                 gas: IdealGas,
+                 P_a: float) -> float:
+        """This function evaluates for the ideal nozzle area ratio for the chamber
+
+        Args:
+            gas (IdealGas): Gas Component for the chamber conditions
+            P_a (float): Ambient Pressure (Bar)
+
+        Returns:
+            float: Required Area ratio for selected expansion
+        """
+        
+        gamma = gas.get_gamma()
+        P_c = gas.get_pressure()
+        
+        A_rat = (
+            ((gamma - 1)/2)**(1/2) 
+            * (2 / (gamma + 1)) ** ((gamma + 1)/(2 * (gamma - 1)))
+            * (P_a / P_c) ** (-1 / gamma)
+            * (1 - (P_a / P_c) ** ((gamma - 1) / gamma)) ** (- (1/2))
+        )
+        
+        return A_rat
+    
+    
+
+    def size_system(self, m_dot: float, eta_c: float = 0.8, P_e: float = 1e5) -> dict:
         """This function sizes the Combustion Chamber
 
         Args:
             m_dot (float): Mass Flow Rate Through Combustion Chamber (kg/s)
-            eta_c (float): C* efficiency of the combustion (%)
+            eta_c (float, optional): C* efficiency of the combustion (%). Defaults to 0.8.
+            P_e (float, optional): Nozzle Exit Pressure (Pa). Defaults to 1 Bar (Atmosphere).
 
         Returns:
             dict
@@ -137,6 +165,12 @@ class CombustionChamber:
         param = self.combustion_param(mr=self._mr, pcc=self._pcc, eta_c=eta_c)
 
         self._a_cc = self._m_dot / (param)
+
+        gas = self._comb.get_thermo_prop(Pcc=self._pcc, MR=self._mr)
+        
+        self._a_rat = self.area_rat(gas = gas, P_a = P_e)
+        
+        self._a_e = self._a_cc * self._a_rat
 
         # Solving for new injection conditions
         self._m_dot_fu = self._m_dot / (self._mr + 1)
@@ -155,6 +189,117 @@ class CombustionChamber:
         )
 
         return dic
+
+    def area_error(self, M: float, gamma: float):
+        """Error Function for the Nozzle Expansion Ratio Relationship
+
+        Args:
+            M (float): Mach number at the Exit of the Nozzle
+            gamma (float): Specific Heat Ratio of the Gas
+        """
+
+        rhs = (1 / M) * ((2 / (gamma + 1)) * (1 + ((gamma - 1) / 2) * M**2)) ** (
+            (gamma + 1) / (2 * (gamma - 1))
+        )
+
+        error = rhs - self._a_rat
+
+        return error
+    
+    def get_supersonic_mach(self,
+                            gas: IdealGas):
+        """This function solves for the Supersonic Mach Number solution
+
+        Args:
+            gas (IdealGas): Combustion Chamber Ideal Gas
+
+        Returns:
+            float: Supersonic Mach Number
+        """
+        gamma = gas.get_gamma()
+        
+        M = adjoint(
+            func=self.area_error,
+            x_guess=2,
+            dx=0.01,
+            n=500,
+            relax=1,
+            target=0,
+            params=[gamma],
+        )
+
+        return M
+    
+    def get_P_e(self,
+                gas: IdealGas) -> float:
+        """This function solves for the exit pressure of the chamber
+
+        Args:
+            gas (IdealGas): Combustion Gas Object Inside the Chamber
+
+        Returns:
+            float: Exit Pressure for the Combustion Chamber
+        """
+        
+        # First we get the supersonic Mach Number at the exit of the chamber
+        M_e = self.get_supersonic_mach(gas = gas)
+        
+        # We get the chamber conditions
+        P_c = gas.get_pressure()
+        gamma = gas.get_gamma()
+        
+        # We can now solve for the exit pressure of the chamber
+        P_e = P_c * (1 + (gamma - 1)/2 * M_e**2) ** (- gamma / (gamma - 1)) 
+        
+        return P_e
+    
+    def get_cf(self, 
+               gas: IdealGas,
+               P_a: float = 1e5
+               ) -> float:
+        """This function gets the Thrust Coefficient for the Chamber
+
+        Args:
+            gas (IdealGas): Combustion Chamber Ideal Gas Object
+            P_a (float, optional): Ambient Pressure (Pa). Defaults to 1 Bar.
+
+        Returns:
+            float: Thrust Coefficient
+        """
+        # We get the specific heat ratio and chamber pressure
+        P_c = gas.get_pressure()
+        gamma = gas.get_gamma()
+        
+        # We get the exit pressure 
+        P_e = self.get_P_e(gas = gas)
+
+        c_f = (
+            (((2 * gamma**2)/(gamma - 1)) * 
+              (2 / (gamma + 1))**((gamma + 1)/(gamma - 1)) * 
+              (1 - (P_e / P_c)**((gamma - 1)/ gamma)) ) ** (1/2) +
+              (self._a_rat) * ((P_e - P_a)/P_c)  
+        )
+
+        return c_f
+    
+    def get_thrust(self,
+                   gas: IdealGas,
+                   P_a: float = 1e5):
+        """This function solves for the thrust of the chamber
+
+        Args:
+            gas (IdealGas): Combustion Chamber Gas Condition
+            P_a (float, optional): Ambient Pressure (Pa). Defaults to 1 Bar.
+        """
+        
+        # We get the chamber pressure
+        P_c = gas.get_pressure()
+        
+        c_f = self.get_cf(gas=gas)
+
+        F = c_f * P_c * self._a_cc
+        
+        return F
 
     def get_cond(
         self,
@@ -192,6 +337,9 @@ class CombustionChamber:
         gas = self._comb.get_thermo_prop(Pcc=pcc, MR=mr)
 
         to = gas.get_temperature() * eta_c**2
+        
+        # We get the thrust of the system
+        F = self.get_thrust(gas = gas)
 
         # Getting combustion gas properties
         gamma = gas.get_gamma()
@@ -207,6 +355,7 @@ class CombustionChamber:
             "Cp": cp,
             "gamma": gamma,
             "R": R,
+            "F": F,
             "ox_stiffness": ox_stiff,
             "fu_stiffness": fu_stiff,
             "m_dot_t": m_dot_t,
