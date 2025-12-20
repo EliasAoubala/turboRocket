@@ -202,6 +202,59 @@ class Barske:
 
         return df
 
+    def size_expeller(
+        self,
+        fluid: IncompressibleFluid,
+        d_1: float,
+        l_1: float,
+        l_2: float,
+        psi: float = 0.2,
+    ) -> float:
+        # We check if the inlet velocity exceeds recommended guidelines
+        if l_1 <= 0:
+            raise ValueError(f"Blade Entrance Length must be a positive number")
+        elif l_2 <= 0:
+            raise ValueError(f"Blade Exit Axial Length must be a positive Number")
+
+        if l_1 < l_2:
+            raise ValueError(f"Axial Blade Shape is unacceptable! l_1 > l_2")
+
+        self._l_1 = l_1
+        self._l_2 = l_2
+        self._psi = psi
+
+        # We get fluid properties
+        rho = fluid.get_density()
+        self._d_1 = d_1
+
+        self._u_1 = (self._d_1 / 2) * self._N  # m/s
+
+        # Evaluates for the head of the pump and associated required exit velocity
+        self._h = self._dp / (rho * self._g)  # m
+
+        self._u_2 = ((2 * self._g * self._h + self._u_1**2) / (1 + psi)) ** (1 / 2)
+        self._d_2 = 2 * self._u_2 / (self._N)
+
+        self._c_1 = self._d_2 / 100
+
+        if self._c_1 * self._m_to_in > 0.04:
+            self._c_1 = 0.04 / self._m_to_in
+
+        self._c_2 = self._d_2 * 0.05
+
+        data = {
+            "Inlet Diameter - d_1 (mm)": [self._d_1 * 1e3],
+            "Exit Diameter - d_2 (mm)": [self._d_2 * 1e3],
+            "Entrance Axial Blade Length - l_1 (mm)": [self._l_1 * 1e3],
+            "Exit Axial Blade Legnth - l_2 (mm)": [self._l_2 * 1e3],
+            "Axial Clearance - c_1 (mm)": [self._c_1 * 1e3],
+            "Radial Clearance - c_2 (mm)": [self._c_2 * 1e3],
+        }
+
+        df = pd.DataFrame(data=data)
+
+        return df
+
     def get_pump_performance(
         self,
         fluid: IncompressibleFluid,
@@ -223,6 +276,8 @@ class Barske:
 
         if psi is None:
             psi = self._psi
+
+            print(psi)
 
         if N is None:
             N = self._N
@@ -324,3 +379,61 @@ class Barske:
         eta = pw / (pw_prime + pf)
 
         return eta
+
+    def get_pump_paddle_power(
+        self,
+        fluid: IncompressibleFluid,
+        d_1: float | None = None,
+        d_2: float | None = None,
+        l_1: float | None = None,
+        l_2: float | None = None,
+        N: float | None = None,
+    ):
+        """Function for evaluating the pump efficiency
+
+        Args:
+            fluid (IncompressibleFluid): Inlet fluid object of the pump
+            d_1 (float | None, optional): Inner Diameter of the Paddle. Defaults to Parameter Defined During Sizing.
+            d_2 (float | None, optional): Outer DIameter of the Paddle. Defaults to Parameter Defined During Sizing.
+            l_1 (float | None, optional): Inner Blade Height of the Paddle. Defaults to Parameter Defined During Sizing.
+            l_2 (float | None, optional): Outer Blade Height of the Paddle. Defaults to Parameter Defined During Sizing.
+            N (float | None, optional): Shaft Speed of the Pump (rad/s). Defaults to design shaft speed.
+        """
+        # We consider conditional parameters
+        if d_1 is None:
+            d_1 = self._d_1
+
+        if d_2 is None:
+            d_2 = self._d_2
+
+        if l_1 is None:
+            l_1 = self._l_1
+
+        if l_2 is None:
+            l_2 = self._l_2
+
+        # We now need to convert our key parameters into imperial for the friction calculation
+        v = (fluid.get_viscosity() / fluid.get_density()) * self._ms_to_fts**2
+        rho = fluid.get_density() * self._kgm3_to_lbcuft
+
+        N = N * 60 / (2 * np.pi)
+
+        d_1 = self._d_1 * self._m_to_in
+        d_2 = self._d_2 * self._m_to_in
+        l_1 = self._l_1 * self._m_to_in
+        l_2 = self._l_2 * self._m_to_in
+
+        if l_1 == l_2:
+            alpha_1 = 90
+        else:
+            alpha_1 = np.arctan((d_2 / 2 - d_1 / 2) / (l_1 - l_2))
+
+        pf = (
+            0.6e-6
+            * (rho)
+            * (v**0.2)
+            * ((N / 1000) ** 2.8)
+            * ((((1 / np.sin(alpha_1)) + 1) * d_2**4.6) + (l_1 * 9.2 * d_1**3.6))
+        ) * self._hp_to_w
+
+        return pf
