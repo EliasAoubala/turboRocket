@@ -5,6 +5,8 @@ import numpy as np
 from enum import Enum
 import pandas as pd
 
+import warnings
+
 
 class DiffuserType(Enum):
 
@@ -75,31 +77,32 @@ class Barske:
         # We check if the inlet velocity exceeds recommended guidelines
 
         if v_0 < 5 / self._ms_to_fts:
-            raise ValueError(
-                f"Inlet Velocity below Recommendation: {v_0*self._ms_to_fts} < 5 ft/s"
+            warnings.warn(
+                f"Inlet Velocity below Recommendation: {v_0*self._ms_to_fts} < 5 ft/s", UserWarning
             )
-        elif v_0 > 12 / self._ms_to_fts:
-            raise ValueError(
-                f"Inlet Velocity above Recommendation: {v_0*self._ms_to_fts} > 12 ft/s"
+        
+        if v_0 > 12 / self._ms_to_fts:
+            warnings.warn(
+                f"Inlet Velocity above Recommendation: {v_0*self._ms_to_fts} > 12 ft/s", UserWarning
             )
-        elif l_1 <= 0:
+        
+        if l_1 <= 0:
             raise ValueError(f"Blade Entrance Length must be a positive number")
         elif l_2 <= 0:
             raise ValueError(f"Blade Exit Axial Length must be a positive Number")
-
         if l_1 < l_2:
             raise ValueError(f"Axial Blade Shape is unacceptable! l_1 > l_2")
 
         # We then check the divergence angle based on the diffuer
         if diffuser_type == DiffuserType.circular:
             if delta_div < 8 or delta_div > 10:
-                raise ValueError(
-                    f"Divergence Angle of the Diffuser is outwith recommendation for a Circular Diffuser: 8 < {delta_div} < 10"
+                warnings.warn(
+                    f"Divergence Angle of the Diffuser is outwith recommendation for a Circular Diffuser: 8 < {delta_div} < 10", UserWarning
                 )
         elif diffuser_type == DiffuserType.rectangular:
             if delta_div < 4 or delta_div > 8:
-                raise ValueError(
-                    f"Divergence Angle of the Diffuser outwith recommendation for a Rectangular Diffuser: 4 < {delta_div} < 8"
+                warnings.warn(
+                    f"Divergence Angle of the Diffuser outwith recommendation for a Rectangular Diffuser: 4 < {delta_div} < 8", UserWarning
                 )
 
         self._psi = psi
@@ -115,8 +118,8 @@ class Barske:
         self._u_1 = (self._d_1 / 2) * self._N  # m/s
 
         if self._u_1 * self._ms_to_fts > 150:
-            raise ValueError(
-                f"Inner Blade Speed Exceeds 150 ft/s, slow down blade by either decreasing inlet velocity or diameter. {self._u_1* self._ms_to_fts} > 150 ft/s"
+            warnings.warn(
+                f"Inner Blade Speed Exceeds 150 ft/s, slow down blade by either decreasing inlet velocity or diameter. {self._u_1* self._ms_to_fts} > 150 ft/s", UserWarning
             )
 
         # Evaluates for the head of the pump and associated required exit velocity
@@ -130,13 +133,13 @@ class Barske:
         self._l_2 = l_2
 
         if self._l_1 < 0.25 * self._d_1:
-            raise ValueError(
-                f"Impeller Inlet Blade Axial Width is below recommended guidelines for this design point: {self._l_1} < (1/4) {self._d_1}"
+            warnings.warn(
+                f"Impeller Inlet Blade Axial Width is below recommended guidelines for this design point: {self._l_1} < (1/4) {self._d_1}", UserWarning
             )
 
         elif self._l_2 < self._l_1 * (self._d_1 / self._d_2):
-            raise ValueError(
-                f"Impeller Exit Blade Axial Width is below recommended Guideliness for this design point: {self._l_2} < {self._l_1*(self._d_1/self._d_2)}"
+            warnings.warn(
+                f"Impeller Exit Blade Axial Width is below recommended Guideliness for this design point: {self._l_2} < {self._l_1*(self._d_1/self._d_2)}", UserWarning
             )
 
         # We evaluate for our absolute and relative exit velocities, assuming no pre-swirl and an exit angle of 90 degrees.
@@ -153,8 +156,8 @@ class Barske:
 
         # We check if the exit blade length
         if self._l_2 < 3 * self._c_1:
-            raise ValueError(
-                f"Axial Blade Length at Exit is too low when compared to the axial clearance of the Impeller. {l_2} > {3*self._c_1}"
+            warnings.warn(
+                f"Axial Blade Length at Exit is too low when compared to the axial clearance of the Impeller. {l_2} > {3*self._c_1}", UserWarning
             )
 
         # Now Defining our Diffuser Parameters

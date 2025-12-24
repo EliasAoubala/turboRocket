@@ -579,24 +579,13 @@ class SupersonicProfile:
         Returns:
             dict[str, float]: Dictionary of the x and y position of the camber, along with the thickness at his point
         """
-
-        # We get the upper surface position
-        bnds = Bounds(lb=0, ub=1)
-        res = minimize(
-            self.error_circle,
-            s_l,
-            args=s_l,
-            bounds=bnds,
-        )
-
-        s_u = res.x
-
         # We get the tangent location on the upper surface
-        x_u, y_u = self.get_upper_surface_position(s_u=s_u)
+        x_u, y_u = self.get_upper_surface_position(s_u=s_l)
         x_l, y_l = self.get_lower_surface_position(s_l=s_l)
 
         # We can get the mid point between these two points accordingly.
-        dic = self.fit_surface_circle(s_u=s_u, s_l=s_l)
+        dic = {"x": (x_u + x_l)/2,
+               "y": (y_u + y_l)/2}
 
         dic["x_1"] = x_u
         dic["y_1"] = y_u
@@ -605,6 +594,19 @@ class SupersonicProfile:
         dic["y_2"] = y_l
 
         return dic
+
+    def get_cad_shift(self) -> float:
+        """This function gets the offset for the CAD
+
+        Returns:
+            float: CAD Offset
+        """
+        
+        df = self.generate_xy()
+        
+        offset = - df["y"].min() - 0.5 * (df["y"].max() - df["y"].min())
+        
+        return offset
 
     def passage_position(self, s_l: float) -> dict[str, float]:
         """Gets the location of the passage center line for machining
@@ -924,11 +926,81 @@ class SupersonicProfile:
         z_array = np.zeros(x_array.size)
 
         # We need to center in the y_axis- to do this, we will get the maximum and minimum value for the y, half it and shift accordingly.
-        y_array = y_array - y_array.min() - 0.5 * (y_array.max() - y_array.min())
+        # y_array = y_array - y_array.min() - 0.5 * (y_array.max() - y_array.min())
 
         df = pd.DataFrame(data={"x": x_array * 1e3, "y": y_array * 1e3, "z": z_array})
 
         return df
+
+    def get_xy_mean_line(self) -> pd.DataFrame:
+        """Function that gets the mean line between the upper and lower surfaces of the turbine
+
+        Returns:
+            pd.DataFrame: Dataframe containing the mean_line co-ordinates of the upper and lower surface
+        """
+        
+        ####################################### Upper Surface Profile #######################################
+        
+        x_array_u = np.array([])
+        y_array_u = np.array([])
+
+        # We plot the Leading Edge Array,
+        x_array_u = np.append(x_array_u, self._x_i_line_sf[::-1])
+        y_array_u = np.append(y_array_u, self._y_i_line_sf[::-1])
+
+        # The then go to the inlet upper Transition
+        x_array_u = np.append(x_array_u, (self._xlkt_iu_sf)[-2:1:-1])
+        y_array_u = np.append(y_array_u, (self._ylkt_iu_sf)[-2:1:-1])
+
+        # We then do the inlet Upper Circular element
+        x_array_u = np.append(x_array_u, self._x_u_array_sf)
+        y_array_u = np.append(y_array_u, self._y_u_array_sf)
+
+        # We then do the outlet Upper Transition
+        x_array_u = np.append(x_array_u, self._xlkt_ou_sf[1:-1])
+        y_array_u = np.append(y_array_u, self._ylkt_ou_sf[1:-1])
+
+        # We plote the Trailing Edge Array,
+        x_array_u = np.append(x_array_u, self._x_o_line_sf)
+        y_array_u = np.append(y_array_u, self._y_o_line_sf)
+
+        ####################################### Lower Surface Profile #######################################
+
+        x_array_l = np.array([])
+        y_array_l = np.array([])
+
+        # We then do the outlet lower transition
+        x_array_l = np.append(x_array_l, self._xlkt_ol_sf[-1:1:-1])
+        y_array_l = np.append(y_array_l, self._ylkt_ol_sf[-1:1:-1])
+
+        # We then do the lower circular element
+        x_array_l = np.append(x_array_l, (self._x_l_array_sf)[::-1])
+        y_array_l = np.append(y_array_l, (self._y_l_array_sf)[::-1])
+
+        # We then do the inlet lower transition element
+        x_array_l = np.append(x_array_l, (self._xlkt_il_sf)[1:-2])
+        y_array_l = np.append(y_array_l, (self._ylkt_il_sf)[1:-2])
+
+        x_array_l = np.append(x_array_l, self._x_i_line_sf[-1])
+        y_array_l = np.append(y_array_l, self._y_i_line_sf[-1])
+
+        # We can now inverse the order of the array now
+        x_array_l = x_array_l[::-1]
+        y_array_l = y_array_l[::-1]
+        
+        ######################################### Normalising the distances #########################################
+
+        y_array = np.append(y_array_l, y_array_u)
+
+        # We need to center in the y_axis- to do this, we will get the maximum and minimum value for the y, half it and shift accordingly.
+        y_array_l = y_array_l - y_array.min() - 0.5 * (y_array.max() - y_array.min())
+        y_array_u = y_array_u - y_array.min() - 0.5 * (y_array.max() - y_array.min())
+
+        ######################################### Interpolation #########################################
+        
+
+        df = pd.DataFrame(data={"x": x_array * 1e3, "y": y_array * 1e3, "z": z_array})
+        
 
     def M_i_max(self):
         """
@@ -1044,6 +1116,75 @@ class SupersonicProfile:
         self._y_o_line_sf = self._y_o_line_up * sf
 
         return
+    
+    def generate_mesh_upper(self, n: int = 1000) -> pd.DataFrame:
+        """This function gets the upper surface mesh contour
+        
+        Args:
+            n (int, optional): Number of Points on the Upper Surface. Defaults to 1000.
+
+        Returns:
+            pd.DataFrame: Contour of the Upper Surface
+        """
+        
+        # We get the offset
+        offset = self.get_cad_shift()
+        
+        self.generate_surface_maps()
+        
+        x_c = []
+        y_c = []
+        
+        for x in np.linspace(0, 1, n):
+            camber = self.camber_position(x)
+            
+            x_c.append(camber["x"])
+            y_c.append(camber["y"])
+            
+        data ={
+            "x": np.array(x_c)*1e3, 
+            "y": (np.array(y_c) + self._t/2)*1e3 - offset,
+            "z": np.zeros(np.array(x_c).size)
+            }
+            
+        df = pd.DataFrame(data)
+        
+        return df
+    
+    def generate_mesh_lower(self, n: float = 1000) -> pd.DataFrame:
+        """This function gets the lower surface mesh contour
+        
+        Args:
+            n (float, optional): Number of Points on the Upper Surface. Defaults to 1000.
+
+        Returns:
+            pd.DataFrame: Contour of the Upper Surface
+        """
+        
+        # We get the offset
+        offset = self.get_cad_shift()
+        
+        self.generate_surface_maps()
+        
+        x_c = []
+        y_c = []
+        z_c = []
+        
+        for x in np.linspace(0, 1, n):
+            camber = self.camber_position(x)
+            
+            x_c.append(camber["x"])
+            y_c.append(camber["y"])
+            
+        data = {
+            "x": (np.array(x_c))*1e3, 
+            "y": (np.array(y_c) - self._t/2)*1e3 - offset,
+            "z": np.zeros(np.array(x_c).size)
+            }
+        
+        df = pd.DataFrame(data)
+        
+        return df
 
 
 class SymmetricFiniteEdge(SupersonicProfile):
